@@ -42,6 +42,8 @@ Hard numbers that shaped the design:
 | Filename | `PROJECT.md` at repo root (visible + top-level, like README/CLAUDE.md) |
 | Scan cadence | Weekly (matches `security-scan`) |
 | Tooling home | Standalone `project-standards` repo (separate concern from `security-standards`) |
+| Scaffolder & git | **Flag-only** — `init` never runs `git init`; the scanner flags non-git repos |
+| Derived artifacts | **Central & untracked** — `portfolio.json` + `PORTFOLIO.md` in `~/.portfolio/`, regenerated each scan, not committed |
 
 ## Goals / Non-goals
 
@@ -87,7 +89,9 @@ The repo is source of truth          Derived views (read-only)
    - `init <repo>` — scaffold or repair a `PROJECT.md`, pre-filling what it can detect: `name`
      from dir, `version` from `package.json`/`pyproject.toml`/`Cargo.toml`/git tags, git remote,
      `purpose` from README first line or App Brain description where available. Idempotent: never
-     clobbers human-written fields, only fills blanks/repairs structure.
+     clobbers human-written fields, only fills blanks/repairs structure. **Does not run `git init`
+     on non-git dirs** — it writes the manifest and lets the scanner flag "not in git"; graduating
+     a scratch dir into version control stays a deliberate per-project decision (no side effects).
    - `lint <repo>` — the **pure validator**. Input: a repo path. Output: `conforming` or a list of
      violations. This single function is the shared dependency of the scanner and the session hook.
    - `scan [roots...]` — walk `/Projects` + `/Developer`, run the validator on each repo, emit the
@@ -95,8 +99,9 @@ The repo is source of truth          Derived views (read-only)
 
 3. **Drift scanner** — `portfolio scan` wrapped in a `com.devon.portfolio-scan` LaunchAgent,
    weekly, read-only. Reports every repo with a missing / malformed / stale manifest. Writes the
-   JSON aggregate to a known path (e.g. `~/.portfolio/portfolio.json`) and the `PORTFOLIO.md`
-   digest. Mirrors the `com.devon.security-scan` pattern Devon already trusts.
+   JSON aggregate and the `PORTFOLIO.md` digest to a central, **untracked** path (`~/.portfolio/`),
+   regenerated every scan — disposable derived views, not committed (like the security audit log).
+   Mirrors the `com.devon.security-scan` pattern Devon already trusts.
 
 4. **Session-nudge hook** — a Claude Code **Stop** hook. If the session edited files in a repo,
    run the validator; if `PROJECT.md` is missing or stale relative to the work just done, emit a
@@ -161,8 +166,10 @@ Free text and/or links to specs above.
 
 - **`portfolio.json`** — canonical aggregate (one record per project: all frontmatter + parsed
   backlog stats + git staleness + validator status). The single artifact every view derives from.
+  Written to `~/.portfolio/`, untracked, regenerated each scan.
 - **`PORTFOLIO.md`** — human digest rendered from the JSON: a sortable table (name, tier, version,
   status, open-backlog count, staleness) followed by the full merged backlog grouped by project.
+  Also written to `~/.portfolio/`, untracked.
 - **Watchtower (Phase 2)** — reads `portfolio.json` to populate its grid + graph.
 
 ## Build phases
@@ -177,8 +184,4 @@ Free text and/or links to specs above.
 - **Phase 3 (optional, later)** — App Brain ⇄ `PROJECT.md` cross-check for drift.
 
 ## Open / deferred items
-- Exact `portfolio.json` path and whether the digest is committed per-repo or written to a central
-  location only — settle during planning.
-- Whether `init` should `git init` non-git scratch dirs automatically or only flag them — lean
-  toward flag-only (don't mutate repos as a side effect of scaffolding).
-- App Brain purpose sync direction (Phase 3).
+- App Brain purpose sync direction (Phase 3, optional).
