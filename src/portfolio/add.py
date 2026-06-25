@@ -38,12 +38,13 @@ def add_item(text, *, repo=None, priority=None, cwd, session=None,
              roots=None, today=None, now_iso) -> InboxItem:
     today = today or date.today()
     roots = roots or config.DEFAULT_ROOTS
+    explicit = repo is not None
     repo = _valid_repo(repo)
     confidence = 1.0 if repo else 0.0
-    if repo is None:
+    if repo is None and not explicit:
         repo, confidence = infer_repo(cwd, roots)
 
-    can_write = repo is not None and is_git(repo) and tree_clean(repo)
+    can_write = repo is not None and tree_clean(repo)
     item = InboxItem(id=new_id(text, now_iso), ts=now_iso, text=text,
                      inferred_repo=str(repo) if repo else None, confidence=confidence,
                      source_session=session, priority=priority, status="untriaged")
@@ -52,7 +53,7 @@ def add_item(text, *, repo=None, priority=None, cwd, session=None,
         try:
             init_repo(repo, today=today)
             append_backlog_item(repo, text, priority, today.isoformat())
-        except (OSError, ValueError):
+        except Exception:
             return item                                 # leave untriaged on failure
         item.status = "triaged"
         append_inbox(item)                              # status update only after success

@@ -24,3 +24,17 @@ def test_nonexistent_repo_does_not_crash(tmp_path, portfolio_env):
     item = add_item("x", repo=tmp_path / "missing", cwd=tmp_path, session="s",
                     today=date(2026,6,25), now_iso=NOW)
     assert item.status == "untriaged"   # invalid repo → inbox only, no exception
+
+def test_invalid_explicit_repo_stays_inbox_even_under_root(make_repo, portfolio_env, tmp_path):
+    # cwd IS a valid project under a root, but a typo'd explicit --repo must NOT infer/write-through
+    real = make_repo("contacts", files={"package.json": '{"version":"1.0.0"}'})
+    item = add_item("typoed target", repo=tmp_path / "missing", cwd=real,
+                    roots=[tmp_path], session="s", today=date(2026,6,25), now_iso=NOW)
+    assert item.status == "untriaged"
+    assert item.inferred_repo is None
+
+def test_infer_repo_boundaries(tmp_path):
+    (tmp_path / "proj").mkdir()
+    got, conf = infer_repo(tmp_path / "proj", [tmp_path])
+    assert got is not None and got.name == "proj" and conf == 0.9
+    assert infer_repo(tmp_path, [tmp_path]) == (None, 0.0)          # cwd == root → no project
