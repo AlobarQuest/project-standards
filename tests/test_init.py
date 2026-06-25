@@ -21,3 +21,13 @@ def test_init_never_creates_git(make_repo):
     repo = make_repo("scratch", git=False)
     init_repo(repo, tier="parking", today=date(2026, 6, 25))
     assert not (repo / ".git").exists()
+
+def test_init_preserves_human_version_source_when_version_blank(make_repo):
+    from datetime import date as _date
+    body = ("---\nname: x\ntier: active\nstatus: active\nversion_source: git-tag\n"
+            "purpose: p\nupdated: 2026-01-01\n---\n")
+    repo = make_repo("x", files={"PROJECT.md": body, "package.json": '{"version":"9.9.9"}'})
+    init_repo(repo, today=_date(2026, 6, 25))
+    fm = read_manifest(repo).frontmatter
+    assert fm["version_source"] == "git-tag"   # human value preserved, not overwritten by detection
+    assert fm["version"] == "9.9.9"            # version still filled

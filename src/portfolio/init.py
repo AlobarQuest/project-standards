@@ -19,7 +19,9 @@ def init_repo(repo: Path, tier: str = "active", today: date | None = None) -> Ma
     fm.setdefault("purpose", detect.detect_purpose(repo) or "TODO: one-line purpose")
     if fm.get("tier") == "active":
         if not fm.get("version"):
-            fm["version"], fm["version_source"] = detect.detect_version(repo)
+            version, source = detect.detect_version(repo)
+            fm["version"] = version
+            fm.setdefault("version_source", source)
         fm.setdefault("version_source", "none")
         fm.setdefault("updated", today.isoformat())
 

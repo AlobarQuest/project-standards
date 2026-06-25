@@ -1,4 +1,4 @@
-from portfolio.inbox import InboxItem, append_inbox, read_inbox, mark_triaged, new_id, find_duplicate
+from portfolio.inbox import InboxItem, append_inbox, read_inbox, mark_triaged, new_id
 from portfolio import config
 
 def _item(text="do x"):
@@ -19,7 +19,3 @@ def test_malformed_line_is_skipped(portfolio_env):
     with config.inbox_path().open("a") as f:
         f.write("{ this is not valid json\n")
     assert [i.text for i in read_inbox()] == ["good"]   # bad line ignored, no crash
-
-def test_find_duplicate(portfolio_env):
-    append_inbox(_item("same text"))
-    assert find_duplicate("same text") is not None and find_duplicate("different") is None

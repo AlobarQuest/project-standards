@@ -5,7 +5,7 @@ from portfolio.aggregate import build_records
 def test_scan_survives_malformed_yaml(make_repo, portfolio_env):
     make_repo("bad", files={"PROJECT.md": "---\nname: x\n bad: : :\n---\n"})
     summary = scan(roots=[(make_repo("bad2").parent)], today=date(2026,6,26))  # same tmp parent
-    assert summary["projects"] >= 1   # did not raise
+    assert summary["projects"] == 2   # both repos discovered, scan did not crash on the malformed one
 
 def test_no_commit_repo_does_not_crash(make_repo):
     repo = make_repo("fresh", git=True, commit=False)   # git init, zero commits

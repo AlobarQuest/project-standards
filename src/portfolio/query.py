@@ -2,7 +2,12 @@ import json
 from . import config
 
 def query(filters: dict, json_text: str | None = None) -> list[dict]:
-    data = json.loads(json_text) if json_text is not None else json.loads(config.json_path().read_text())
+    if json_text is None:
+        path = config.json_path()
+        if not path.exists():
+            return []
+        json_text = path.read_text()
+    data = json.loads(json_text)
     def keep(p):
         if "tier" in filters and p.get("tier") != filters["tier"]: return False
         if "status" in filters and p.get("status") != filters["status"]: return False

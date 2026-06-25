@@ -45,10 +45,3 @@ def mark_triaged(item_id: str) -> None:
             item.status = "triaged"
             append_inbox(item)
             return
-
-def find_duplicate(text: str) -> InboxItem | None:
-    norm = text.strip().lower()
-    for item in read_inbox():
-        if item.text.strip().lower() == norm and item.status == "untriaged":
-            return item
-    return None

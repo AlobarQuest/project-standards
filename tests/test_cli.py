@@ -14,9 +14,9 @@ def test_cli_lint_nonzero_on_fail(make_repo, portfolio_env):
     assert main(["lint", str(make_repo("x"))]) == 1     # no PROJECT.md → FAIL
 
 
-def test_cli_add_accepts_multiword(make_repo, portfolio_env):
+def test_cli_add_accepts_multiword(make_repo, portfolio_env, monkeypatch):
     repo = make_repo("contacts", files={"package.json": '{"version":"1.0.0"}'})
-    import os; os.chdir(repo)
+    monkeypatch.chdir(repo)
     assert main(["add", "fix", "the", "login", "flow", "--repo", str(repo)]) == 0
 
 
