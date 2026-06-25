@@ -21,3 +21,6 @@ def test_is_git_true_false(make_repo):
 
 def test_purpose_from_readme_first_prose_line(make_repo):
     assert detect_purpose(make_repo("p", files={"README.md": "# Title\n\nDoes the thing well.\n"})) == "Does the thing well."
+
+def test_version_survives_non_dict_json(make_repo):
+    assert detect_version(make_repo("p", files={"package.json": "[]"})) == ("n/a", "none")

@@ -13,7 +13,8 @@ def detect_version(repo: Path) -> tuple[str, str]:
     pkg = repo / "package.json"
     if pkg.exists():
         try:
-            v = json.loads(pkg.read_text()).get("version")
+            parsed = json.loads(pkg.read_text())
+            v = parsed.get("version") if isinstance(parsed, dict) else None
             if v: return str(v), "package.json"
         except (json.JSONDecodeError, OSError): pass
     pyproject = repo / "pyproject.toml"
@@ -35,12 +36,18 @@ def detect_version(repo: Path) -> tuple[str, str]:
     return "n/a", "none"
 
 def detect_remote(repo: Path) -> str | None:
-    return _git(repo, ["remote", "get-url", "origin"]) or None if is_git(repo) else None
+    if not is_git(repo):
+        return None
+    return _git(repo, ["remote", "get-url", "origin"]) or None
 
 def detect_purpose(repo: Path) -> str | None:
     readme = repo / "README.md"
     if not readme.exists(): return None
-    for line in readme.read_text().splitlines():
+    try:
+        lines = readme.read_text().splitlines()
+    except OSError:
+        return None
+    for line in lines:
         s = line.strip()
         if s and not s.startswith(("#", "!", "[")):
             return s
