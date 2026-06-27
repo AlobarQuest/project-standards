@@ -4,7 +4,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$HOME/.claude/skills/backlog" "$HOME/.claude/hooks" "$HOME/Library/LaunchAgents"
 cp "$HERE/backlog.skill.md" "$HOME/.claude/skills/backlog/SKILL.md"
 install -m 0755 "$HERE/portfolio-nudge.sh" "$HOME/.claude/hooks/portfolio-nudge.sh"
-chmod 0755 "$HERE/portfolio-scan.sh" "$HERE/portfolio-triage.sh"
+chmod 0755 "$HERE/portfolio-scan.sh" "$HERE/portfolio-triage.sh" "$HERE/portfolio-init.sh"
 cp "$HERE/com.devon.portfolio-scan.plist" "$HOME/Library/LaunchAgents/com.devon.portfolio-scan.plist"
 launchctl unload "$HOME/Library/LaunchAgents/com.devon.portfolio-scan.plist" 2>/dev/null || true
 launchctl load "$HOME/Library/LaunchAgents/com.devon.portfolio-scan.plist"
