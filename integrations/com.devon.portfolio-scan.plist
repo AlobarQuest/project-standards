@@ -5,10 +5,10 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string><string>-lc</string>
-    <string>PYTHONPATH="$HOME/Projects/project-standards/src" python3 -m portfolio scan</string>
+    <string>exec "$HOME/Projects/project-standards/integrations/portfolio-scan.sh"</string>
   </array>
   <key>StartCalendarInterval</key>
-  <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+  <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>0</integer></dict>
   <key>StandardOutPath</key><string>/tmp/portfolio-scan.log</string>
   <key>StandardErrorPath</key><string>/tmp/portfolio-scan.err</string>
 </dict></plist>
