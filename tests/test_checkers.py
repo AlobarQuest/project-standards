@@ -1,8 +1,9 @@
 import json
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 from portfolio import checkers, config
-from portfolio.checkers import _run, check_project, check_security, check_code, check_governance
+from portfolio.checkers import _run, check_project, check_security, check_code, check_governance, check_infra
 from portfolio.matrix import PASS, VIOLATION, UNKNOWN
 
 
@@ -359,3 +360,215 @@ def test_check_governance_run_unavailable_is_unknown(monkeypatch, tmp_path):
     assert result.standard == "governance"
     assert result.status == UNKNOWN
     assert "unavailable" in result.note
+
+
+# --- check_infra ---------------------------------------------------------
+
+def _report_payload(generated_at="2026-07-02T07:00:05Z", instances=None):
+    return {
+        "generated_at": generated_at,
+        "instances": instances if instances is not None else {
+            "prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": []},
+        },
+        "totals": {},
+        "delta": {},
+    }
+
+
+def _write_report(report_dir, name, payload):
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / name).write_text(json.dumps(payload))
+    return report_dir / name
+
+
+def _now_for(generated_at="2026-07-02T07:00:05Z", plus_hours=1):
+    dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+    return dt + timedelta(hours=plus_hours)
+
+
+def test_check_infra_violation_by_name_match_prefers_description(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    proposal = {
+        "id": "572:bd9d2439",
+        "target": {"provider": "coolify", "resource_type": "application", "uuid": "u-1", "name": "myapp"},
+        "description": "env var drift on myapp",
+        "summary": "should not be used",
+    }
+    payload = _report_payload(instances={
+        "prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": [proposal]},
+    })
+    _write_report(report_dir, "2026-07-02.json", payload)
+
+    result = check_infra({"myapp-repo": ["myapp"]}, _now_for())
+
+    assert result["myapp-repo"].standard == "infra"
+    assert result["myapp-repo"].status == VIOLATION
+    assert result["myapp-repo"].details == [{"id": "572:bd9d2439", "message": "env var drift on myapp"}]
+
+
+def test_check_infra_violation_by_uuid_match(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    proposal = {
+        "id": "572:bd9d2439",
+        "target": {"provider": "coolify", "resource_type": "application", "uuid": "u-1", "name": "myapp"},
+        "description": "env var drift on myapp",
+    }
+    payload = _report_payload(instances={
+        "prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": [proposal]},
+    })
+    _write_report(report_dir, "2026-07-02.json", payload)
+
+    result = check_infra({"myapp-repo": ["u-1"]}, _now_for())
+
+    assert result["myapp-repo"].status == VIOLATION
+    assert result["myapp-repo"].details[0]["id"] == "572:bd9d2439"
+
+
+def test_check_infra_message_falls_back_to_summary(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    proposal = {
+        "id": "572:bd9d2439",
+        "target": {"uuid": "u-1", "name": "myapp"},
+        "summary": "env var drift on myapp (summary)",
+    }
+    payload = _report_payload(instances={
+        "prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": [proposal]},
+    })
+    _write_report(report_dir, "2026-07-02.json", payload)
+
+    result = check_infra({"myapp-repo": ["myapp"]}, _now_for())
+
+    assert result["myapp-repo"].details[0]["message"] == "env var drift on myapp (summary)"
+
+
+def test_check_infra_no_matching_proposals_is_pass_with_report_name_in_note(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    _write_report(report_dir, "2026-07-02.json", _report_payload())
+
+    result = check_infra({"myapp-repo": ["some-other-uuid"]}, _now_for())
+
+    assert result["myapp-repo"].status == PASS
+    assert "2026-07-02.json" in result["myapp-repo"].note
+
+
+def test_check_infra_stale_report_is_all_unknown(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    _write_report(report_dir, "2026-07-02.json", _report_payload())
+
+    now = _now_for(plus_hours=40)
+    result = check_infra({"a": ["x"], "b": []}, now)
+
+    assert result["a"].status == UNKNOWN
+    assert "stale" in result["a"].note
+    assert "2026-07-02.json" in result["a"].note
+    assert result["b"].status == UNKNOWN
+
+
+def test_check_infra_empty_dir_is_all_unknown_no_report(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir(parents=True)
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+
+    result = check_infra({"a": ["x"]}, datetime.now(timezone.utc))
+
+    assert result["a"].status == UNKNOWN
+    assert "no infra drift report" in result["a"].note
+
+
+def test_check_infra_missing_dir_is_all_unknown_no_report(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"  # never created
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+
+    result = check_infra({"a": ["x"]}, datetime.now(timezone.utc))
+
+    assert result["a"].status == UNKNOWN
+    assert "no infra drift report" in result["a"].note
+
+
+def test_check_infra_instance_not_ok_is_all_unknown_naming_prod(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    payload = _report_payload(instances={
+        "prod": {"ok": False, "standards_source": "s", "summary": {}, "proposals": []},
+        "dev": {"ok": True, "standards_source": "s", "summary": {}, "proposals": []},
+    })
+    _write_report(report_dir, "2026-07-02.json", payload)
+
+    result = check_infra({"a": ["x"]}, _now_for())
+
+    assert result["a"].status == UNKNOWN
+    assert "prod" in result["a"].note
+
+
+def test_check_infra_empty_resource_list_is_unknown(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    _write_report(report_dir, "2026-07-02.json", _report_payload())
+
+    result = check_infra({"a": []}, _now_for())
+
+    assert result["a"].status == UNKNOWN
+    assert "coolify_resources" in result["a"].note
+
+
+def test_check_infra_only_remediation_file_is_treated_as_no_report(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    _write_report(report_dir, "2026-07-02.remediation.json", _report_payload())
+
+    result = check_infra({"a": ["x"]}, _now_for())
+
+    assert result["a"].status == UNKNOWN
+    assert "no infra drift report" in result["a"].note
+
+
+def test_check_infra_two_date_files_uses_newer(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+
+    old_proposal = {"id": "1:aaa", "target": {"uuid": "u-1", "name": "old-app"}, "description": "old drift"}
+    new_proposal = {"id": "2:bbb", "target": {"uuid": "u-2", "name": "new-app"}, "description": "new drift"}
+
+    _write_report(report_dir, "2026-07-01.json", _report_payload(
+        generated_at="2026-07-01T07:00:05Z",
+        instances={"prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": [old_proposal]}},
+    ))
+    _write_report(report_dir, "2026-07-02.json", _report_payload(
+        generated_at="2026-07-02T07:00:05Z",
+        instances={"prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": [new_proposal]}},
+    ))
+
+    now = _now_for(generated_at="2026-07-02T07:00:05Z")
+    result = check_infra({"repo": ["new-app", "old-app"]}, now)
+
+    assert result["repo"].status == VIOLATION
+    ids = [d["id"] for d in result["repo"].details]
+    assert ids == ["2:bbb"]
+
+
+def test_check_infra_garbage_json_is_unknown_unreadable(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    report_dir.mkdir(parents=True)
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    (report_dir / "2026-07-02.json").write_text("{not valid json")
+
+    result = check_infra({"a": ["x"]}, _now_for())
+
+    assert result["a"].status == UNKNOWN
+    assert "unreadable" in result["a"].note
+
+
+def test_check_infra_missing_generated_at_is_unknown_unreadable(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    _write_report(report_dir, "2026-07-02.json", {"instances": {}})
+
+    result = check_infra({"a": ["x"]}, _now_for())
+
+    assert result["a"].status == UNKNOWN
+    assert "unreadable" in result["a"].note

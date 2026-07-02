@@ -1,7 +1,9 @@
 import json
 import os
+import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
@@ -114,3 +116,87 @@ def check_governance() -> CheckResult:
     stderr_lines = result.stderr.splitlines()
     first_line = stderr_lines[0] if stderr_lines else ""
     return CheckResult("governance", UNKNOWN, note=f"governance verifier failed with rc {result.returncode}: {first_line}".rstrip())
+
+
+_INFRA_REPORT_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json$")
+
+
+def _latest_infra_report(report_dir: Path) -> Path | None:
+    if not report_dir.is_dir():
+        return None
+    candidates = [p for p in report_dir.iterdir() if p.is_file() and _INFRA_REPORT_NAME_RE.match(p.name)]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.name)
+
+
+def _infra_proposal_message(proposal: dict) -> str:
+    return proposal.get("description") or proposal.get("summary") or proposal.get("id")
+
+
+def _all_infra_unknown(repo_resources: dict[str, list[str]], note: str) -> dict[str, CheckResult]:
+    return {repo: CheckResult("infra", UNKNOWN, note=note) for repo in repo_resources}
+
+
+def check_infra(repo_resources: dict[str, list[str]], now: datetime) -> dict[str, CheckResult]:
+    report_dir = config.infra_report_dir()
+    report_path = _latest_infra_report(report_dir)
+    if report_path is None:
+        return _all_infra_unknown(repo_resources, "no infra drift report found")
+
+    try:
+        data = json.loads(report_path.read_text())
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return _all_infra_unknown(repo_resources, "infra report unreadable")
+
+    if not isinstance(data, dict) or "generated_at" not in data or "instances" not in data:
+        return _all_infra_unknown(repo_resources, "infra report unreadable")
+
+    instances = data["instances"]
+    if not isinstance(instances, dict):
+        return _all_infra_unknown(repo_resources, "infra report unreadable")
+
+    try:
+        generated_at = datetime.fromisoformat(str(data["generated_at"]).replace("Z", "+00:00"))
+    except ValueError:
+        return _all_infra_unknown(repo_resources, "infra report unreadable")
+
+    now_aware = now.astimezone() if now.tzinfo is None else now
+    age_hours = (now_aware.astimezone(timezone.utc) - generated_at.astimezone(timezone.utc)).total_seconds() / 3600
+    if age_hours > config.infra_max_age_hours():
+        return _all_infra_unknown(repo_resources, f"infra report stale: {report_path.name}")
+
+    failed_instances = sorted(
+        name for name, inst in instances.items() if not (isinstance(inst, dict) and inst.get("ok"))
+    )
+    if failed_instances:
+        return _all_infra_unknown(
+            repo_resources, f"infra audit incomplete: {', '.join(failed_instances)} not ok"
+        )
+
+    all_proposals = []
+    for inst in instances.values():
+        all_proposals.extend(p for p in inst.get("proposals", []) if isinstance(p, dict))
+
+    results = {}
+    for repo, resources in repo_resources.items():
+        if not resources:
+            results[repo] = CheckResult(
+                "infra", UNKNOWN, note="infra declared applicable but no coolify_resources in frontmatter"
+            )
+            continue
+
+        matched = []
+        for proposal in all_proposals:
+            target = proposal.get("target")
+            target = target if isinstance(target, dict) else {}
+            if target.get("uuid") in resources or target.get("name") in resources:
+                matched.append(proposal)
+
+        if matched:
+            details = [{"id": p.get("id"), "message": _infra_proposal_message(p)} for p in matched]
+            results[repo] = CheckResult("infra", VIOLATION, details=details)
+        else:
+            results[repo] = CheckResult("infra", PASS, note=f"no drift found in {report_path.name}")
+
+    return results
