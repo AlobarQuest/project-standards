@@ -83,6 +83,20 @@ def test_resolve_cell_exception_for_different_repo_does_not_match():
     assert used == set()
 
 
+def test_resolve_cell_overlapping_exceptions_all_marked_used():
+    result = CheckResult(standard="infra", status=VIOLATION,
+                          details=[{"id": "572:bdc", "message": "backup missing"}])
+    exceptions = [
+        exc(repo="repo1", standard="infra", finding="572:*", reason="broad glob"),
+        exc(repo="repo1", standard="infra", finding="572:bd*", reason="narrow glob"),
+    ]
+    cell, used = resolve_cell(result, exceptions, "repo1")
+    assert cell.status == ACCEPTED
+    assert used == {0, 1}
+    assert cell.details[0]["accepted"] is True
+    assert cell.details[0]["exception_reason"] == "broad glob"  # first match wins for reason
+
+
 def test_resolve_cell_violation_with_empty_details_stays_violation():
     result = CheckResult(standard="security", status=VIOLATION, details=[])
     cell, used = resolve_cell(result, [], "repo1")
@@ -147,6 +161,18 @@ def test_build_report_exit_code_zero_when_no_violations():
     assert report["exit_code"] == 0
 
 
+def test_build_report_missing_standard_falls_back_to_na():
+    rows = [Row(repo="a", path="/a", cells={"project": Cell(PASS)})]
+    machine_cell = Cell(PASS)
+    summary = {PASS: 2, VIOLATION: 0, ACCEPTED: 0, NA: 0, UNKNOWN: 0}
+    report = build_report(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
+    cells = report["repos"][0]["cells"]
+    assert set(cells) == set(matrix.STANDARDS)
+    assert cells["project"]["status"] == PASS
+    for std in ("security", "code", "infra"):
+        assert cells[std]["status"] == NA
+
+
 # --- render_digest ---
 
 def _all_pass_rows():
@@ -169,6 +195,7 @@ def test_render_digest_all_pass_omits_violations_section():
     assert "## Accepted exceptions in effect" not in out
     assert "## Unknown (work items, not failures)" not in out
     assert "## Stale exceptions (matched nothing — delete or fix)" not in out
+    assert "✅" in out  # PASS symbol present in table
     assert "—" in out  # NA symbol present in table
 
 

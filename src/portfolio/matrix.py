@@ -48,12 +48,12 @@ def resolve_cell(result: CheckResult, exc: list[dict], repo: str) -> tuple[Cell,
     details = []
     for detail in result.details:
         detail = dict(detail)
-        for idx, entry in enumerate(exc):
-            if exceptions.matches(entry, repo, result.standard, detail["id"]):
-                detail["accepted"] = True
-                detail["exception_reason"] = entry["reason"]
-                used.add(idx)
-                break
+        matched = [idx for idx, entry in enumerate(exc)
+                   if exceptions.matches(entry, repo, result.standard, detail["id"])]
+        if matched:
+            detail["accepted"] = True
+            detail["exception_reason"] = exc[matched[0]]["reason"]
+            used.update(matched)
         details.append(detail)
 
     if details and all(d.get("accepted") for d in details):
@@ -80,7 +80,7 @@ def build_report(rows, machine_cell, summary, unused_exceptions, generated: str)
             {
                 "repo": row.repo,
                 "path": row.path,
-                "cells": {std: asdict(cell) for std, cell in row.cells.items()},
+                "cells": {std: asdict(row.cells.get(std, na_cell())) for std in STANDARDS},
             }
             for row in rows
         ],
