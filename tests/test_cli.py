@@ -1,5 +1,6 @@
 from portfolio.cli import main
 from portfolio import config
+from portfolio.matrix import PASS, CheckResult
 
 
 def test_cli_scan_runs_and_writes(make_repo, portfolio_env, capsys):
@@ -22,3 +23,57 @@ def test_cli_add_accepts_multiword(make_repo, portfolio_env, monkeypatch):
 
 def test_cli_triage_assign_without_repo_errors(portfolio_env):
     assert main(["triage", "--assign", "abc"]) == 2
+
+
+def test_cli_foundation_valid_repo_returns_zero(make_repo, portfolio_env, capsys, monkeypatch):
+    """Valid foundational repo with [project] only → returns 0, capsys contains 'foundation: 1 repos' and 'violations=0'."""
+    # Monkeypatch check_governance to return PASS (cheaper than a real run)
+    monkeypatch.setattr("portfolio.checkers.check_governance", lambda: CheckResult("governance", PASS))
+
+    body = ("---\nname: foundational\ntier: active\nstatus: active\nversion: 1.0.0\nversion_source: package.json\n"
+            "purpose: core infra\nupdated: 2026-06-25\nfoundation: true\napplicable_standards: [project]\n---\n\n## Backlog\n")
+    repo = make_repo("foundational", files={"PROJECT.md": body})
+
+    assert main(["foundation", "--roots", str(repo.parent)]) == 0
+    out = capsys.readouterr().out
+    assert "foundation: 1 repos" in out
+    assert "violations=0" in out
+
+
+def test_cli_foundation_broken_manifest_returns_one(make_repo, portfolio_env, capsys, monkeypatch):
+    """Broken manifest (missing required fields) → returns 1, output contains 'violations=1'."""
+    monkeypatch.setattr("portfolio.checkers.check_governance", lambda: CheckResult("governance", PASS))
+
+    # Missing required fields for active tier (status, version, version_source)
+    body = ("---\nname: broken\ntier: active\npurpose: broken\nupdated: 2026-06-25\nfoundation: true\napplicable_standards: [project]\n---\n\n## Backlog\n")
+    repo = make_repo("broken", files={"PROJECT.md": body})
+
+    assert main(["foundation", "--roots", str(repo.parent)]) == 1
+    out = capsys.readouterr().out
+    assert "violations=1" in out
+
+
+def test_cli_foundation_malformed_exceptions_toml_returns_two(make_repo, portfolio_env, capsys, monkeypatch, tmp_path):
+    """Malformed FOUNDATION_EXCEPTIONS TOML → returns 2, output starts with 'error:'."""
+    monkeypatch.setattr("portfolio.checkers.check_governance", lambda: CheckResult("governance", PASS))
+
+    # Create a malformed TOML file and set it as the exceptions path
+    exceptions_file = tmp_path / "bad.toml"
+    exceptions_file.write_text("this is not [valid toml")
+    monkeypatch.setenv("FOUNDATION_EXCEPTIONS", str(exceptions_file))
+
+    body = ("---\nname: foundational\ntier: active\nstatus: active\nversion: 1.0.0\nversion_source: package.json\n"
+            "purpose: core\nupdated: 2026-06-25\nfoundation: true\napplicable_standards: [project]\n---\n\n## Backlog\n")
+    repo = make_repo("foundational", files={"PROJECT.md": body})
+
+    assert main(["foundation", "--roots", str(repo.parent)]) == 2
+    out = capsys.readouterr().out
+    assert out.startswith("error:")
+
+
+def test_cli_foundation_no_foundational_repos_returns_two(portfolio_env, capsys):
+    """No foundational repos under roots → returns 2, output contains 'error: no foundational repos'."""
+    # Create an empty root (no repos)
+    assert main(["foundation", "--roots", str(portfolio_env)]) == 2
+    out = capsys.readouterr().out
+    assert "error: no foundational repos" in out

@@ -9,6 +9,8 @@ from .add import add_item
 from .triage import untriaged, assign
 from .scan import scan
 from .query import query
+from .foundation import run_foundation, FoundationError
+from .exceptions import ExceptionsError
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="portfolio")
@@ -18,6 +20,7 @@ def main(argv=None) -> int:
     p = sub.add_parser("add"); p.add_argument("text", nargs="+"); p.add_argument("--repo"); p.add_argument("--priority")
     p = sub.add_parser("triage"); p.add_argument("--assign"); p.add_argument("--repo")
     p = sub.add_parser("scan"); p.add_argument("--roots", nargs="*")
+    p = sub.add_parser("foundation"); p.add_argument("--roots", nargs="*")
     p = sub.add_parser("query")
     for flag in ("tier", "status", "tag"): p.add_argument(f"--{flag}")
     p.add_argument("--stale", action="store_true"); p.add_argument("--has-backlog", action="store_true")
@@ -44,6 +47,16 @@ def main(argv=None) -> int:
     if args.cmd == "scan":
         roots = [Path(r) for r in args.roots] if args.roots else None
         print(json.dumps(scan(roots=roots))); return 0
+    if args.cmd == "foundation":
+        roots = [Path(r) for r in args.roots] if args.roots else None
+        try:
+            report = run_foundation(roots=roots)
+        except (ExceptionsError, FoundationError) as e:
+            print(f"error: {e}"); return 2
+        s = report["summary"]
+        print(f"foundation: {len(report['repos'])} repos · violations={s['violation']} "
+              f"accepted={s['accepted-exception']} unknown={s['unknown']}")
+        return report["exit_code"]
     if args.cmd == "query":
         filters = {k: v for k, v in (("tier", args.tier), ("status", args.status), ("tag", args.tag)) if v}
         if args.stale: filters["stale"] = True
