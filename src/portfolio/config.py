@@ -4,6 +4,8 @@ from pathlib import Path
 DEFAULT_ROOTS = [Path.home() / "Projects", Path.home() / "Developer"]
 STALE_DAYS = 30
 BACKLOG_AGE_DAYS = 180
+FOUNDATION_TIMEOUT_S = 120
+INFRA_MAX_AGE_H = 36
 
 def portfolio_home() -> Path:
     override = os.environ.get("PORTFOLIO_HOME")
@@ -12,3 +14,38 @@ def portfolio_home() -> Path:
 def inbox_path() -> Path:  return portfolio_home() / "inbox.jsonl"
 def json_path() -> Path:   return portfolio_home() / "portfolio.json"
 def digest_path() -> Path: return portfolio_home() / "PORTFOLIO.md"
+
+def security_standards_repo() -> Path:
+    override = os.environ.get("SECURITY_STANDARDS_REPO")
+    return Path(override) if override else Path.home() / "Projects" / "security-standards"
+
+def security_standards_src() -> Path: return security_standards_repo() / "src"
+
+def code_standards_repo() -> Path:
+    override = os.environ.get("CODE_STANDARDS_REPO")
+    return Path(override) if override else Path.home() / "Developer" / "code-standards"
+
+def infra_report_dir() -> Path:
+    override = os.environ.get("INFRADRIFT_REPORT_DIR")
+    return Path(override) if override else Path.home() / "infra-drift" / "reports"
+
+def exceptions_path() -> Path:
+    override = os.environ.get("FOUNDATION_EXCEPTIONS")
+    return Path(override) if override else Path(__file__).resolve().parents[2] / "foundation-exceptions.toml"
+
+def foundation_json_path() -> Path:   return portfolio_home() / "foundation.json"
+def foundation_digest_path() -> Path: return portfolio_home() / "FOUNDATION.md"
+
+def checker_timeout() -> int:
+    override = os.environ.get("FOUNDATION_TIMEOUT")
+    try:
+        return int(override) if override else FOUNDATION_TIMEOUT_S
+    except ValueError:
+        return FOUNDATION_TIMEOUT_S
+
+def infra_max_age_hours() -> int:
+    override = os.environ.get("INFRA_MAX_AGE_HOURS")
+    try:
+        return int(override) if override else INFRA_MAX_AGE_H
+    except ValueError:
+        return INFRA_MAX_AGE_H

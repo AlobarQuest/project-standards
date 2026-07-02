@@ -19,3 +19,33 @@ def test_parking_does_not_require_version():
 def test_bad_enum_is_fail():
     assert any(f.code == "bad_enum" and f.severity == "FAIL"
                for f in validate_frontmatter({"name": "x", "tier": "parking", "status": "bogus", "purpose": "x"}))
+
+def test_foundation_not_bool_is_bad_type():
+    assert any(f.code == "bad_type" and f.severity == "FAIL" and "foundation" in f.message
+               for f in validate_frontmatter(_active(foundation="yes")))
+
+def test_applicable_standards_bad_item_is_bad_enum():
+    assert any(f.code == "bad_enum" and f.severity == "FAIL" and "nope" in f.message
+               for f in validate_frontmatter(_active(applicable_standards=["security", "nope"])))
+
+def test_applicable_standards_not_list_is_bad_type():
+    assert any(f.code == "bad_type" and f.severity == "FAIL" and "applicable_standards" in f.message
+               for f in validate_frontmatter(_active(applicable_standards="security")))
+
+def test_coolify_resources_not_list_of_str_is_bad_type():
+    assert any(f.code == "bad_type" and f.severity == "FAIL" and "coolify_resources" in f.message
+               for f in validate_frontmatter(_active(coolify_resources=[1, 2])))
+
+def test_foundation_true_with_valid_standards_has_no_new_findings():
+    assert validate_frontmatter(_active(foundation=True, applicable_standards=["project", "security"])) == []
+
+def test_foundation_true_without_applicable_standards_warns_incomplete():
+    assert any(f.code == "foundation_incomplete" and f.severity == "WARN"
+               for f in validate_frontmatter(_active(foundation=True)))
+
+def test_foundation_true_infra_without_coolify_resources_warns_incomplete():
+    assert any(f.code == "foundation_incomplete" and f.severity == "WARN"
+               for f in validate_frontmatter(_active(foundation=True, applicable_standards=["infra"])))
+
+def test_no_census_keys_produces_no_census_findings():
+    assert validate_frontmatter(_active()) == []

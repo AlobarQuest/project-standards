@@ -164,6 +164,92 @@ for where `init` best fits in a project's lifecycle.
 
 ---
 
+## Foundation conformance matrix
+
+A repo × standard conformance matrix for **foundational repos** — those that provide standards,
+tooling, or critical infrastructure to the rest of the portfolio. The matrix answers: do the
+foundation repos themselves comply with their own standards?
+
+**What it shows:** a matrix with rows = repos, columns = standards (`project`, `security`,
+`code`, `infra`), cell values = compliance state, plus a separate machine-scope
+`governance` line (not a matrix column — governance is scoped to the portfolio as a
+whole, not to any one repo). Each cell resolves to one of:
+
+| Symbol | Meaning |
+|--------|---------|
+| ✅ | Passes the standard |
+| ❌ | Violates the standard (work required) |
+| ⚠ | Violation accepted via `foundation-exceptions.toml` (tracked, revisit trigger) |
+| — | Not applicable (standard is not declared in that repo's `applicable_standards`) |
+| ? | Unknown (checker timed out, failed, or report is stale — indicates work item, not failure) |
+
+Exit codes: **0** = no violations; **1** = any violation exists; **2** = internal error (malformed
+exceptions file, no foundational repos found). Unknown cells do not fail the exit code — they're
+flagged in a "Work items" section for visibility.
+
+**Usage:**
+
+```bash
+PYTHONPATH=src python3 -m portfolio foundation [--roots ...]
+```
+
+The command generates two artifacts:
+
+- **`~/.portfolio/foundation.json`** — Full report: summary (pass/violation/accepted/unknown counts),
+  matrix cells with details, audit trail of matched exceptions, stale exceptions.
+- **`~/.portfolio/FOUNDATION.md`** — Markdown digest: matrix table, Violations section, Accepted
+  exceptions section, Unknown/work-items section, Stale exceptions hygiene.
+
+**Census (frontmatter in each foundational repo's `PROJECT.md`):**
+
+- `foundation: true` (bool) — declares this repo as foundational
+- `applicable_standards` (list of str) — subset of `[project, security, code, infra]` — which
+  standards this repo declares as in-scope (governance is always included for foundational repos)
+- `coolify_resources` (list of str) — app names or DB UUIDs from Coolify that participate in
+  the `infra` check; required if `infra` is in `applicable_standards`
+
+**Checker adapters:**
+
+- **project:** reuses the portfolio lint validator; FAILs become violations, WARNs are included in details.
+- **security:** runs security-scan against the repo; BLOCK-level findings become violations.
+- **code:** checks for code-standards enrollment (`.code-standards.toml` present); missing creates
+  `code.not-onboarded` violation; else invokes `code-standards check`.
+- **governance:** runs security-scan governance verification across the entire portfolio; failures
+  are violations scoped to `_machine` (governance is machine-level, not per-repo).
+- **infra:** consumes the latest infra-drift report from `$INFRADRIFT_REPORT_DIR` (default
+  `~/infra-drift/reports`); matches proposals by resource name/UUID against `coolify_resources`;
+  `ok: false` instances and backup gaps (rule 572) appear as violations.
+
+**Exceptions workflow:**
+
+Edit `foundation-exceptions.toml` at the repo root to accept known/deliberate violations:
+
+```toml
+[[exception]]
+repo = "brain"
+standard = "code"
+finding = "C901:*"                       # fnmatch globs supported
+reason = "high complexity in legacy module, refactoring Q3"
+added = "2026-07-02"
+revisit = "After refactoring complete"   # optional, recommended
+```
+
+The matrix **reports stale exceptions** — entries that match no current violation — which
+surfaces when accepted risks have been resolved and the exception can be deleted.
+
+**Configuration (env overrides):**
+
+| Env var | Default | Purpose |
+|---------|---------|---------|
+| `SECURITY_STANDARDS_REPO` | `~/Projects/security-standards` | Path to security-standards repo |
+| `CODE_STANDARDS_REPO` | `~/Developer/code-standards` | Path to code-standards repo |
+| `INFRADRIFT_REPORT_DIR` | `~/infra-drift/reports` | Directory containing infra-drift reports (date-named JSON files) |
+| `FOUNDATION_EXCEPTIONS` | `./foundation-exceptions.toml` | Path to exceptions file |
+| `FOUNDATION_TIMEOUT` | `120` | Checker timeout in seconds |
+| `INFRA_MAX_AGE_HOURS` | `36` | Max age of infra-drift report before marked unknown |
+
+---
+
 ## Where things live
 
 | What | Location |
