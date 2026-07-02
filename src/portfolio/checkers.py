@@ -1,4 +1,7 @@
+import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 from . import config
@@ -20,3 +23,36 @@ def check_project(repo: Path) -> CheckResult:
     details = [{"id": f"project.{f.code}", "message": f.message} for f in findings]
     status = VIOLATION if any(f.severity == "FAIL" for f in findings) else PASS
     return CheckResult("project", status, details=details)
+
+
+def _security_detail(finding: dict) -> dict:
+    line = finding.get("line")
+    return {
+        "id": f"security.{finding.get('rule_id')}",
+        "message": f"{finding.get('file')}:{'-' if line is None else line} {finding.get('reason')}",
+    }
+
+
+def check_security(repo: Path) -> CheckResult:
+    cmd = [sys.executable, "-m", "security_scan.cli", str(repo), "--category", "security"]
+    env = {**os.environ, "PYTHONPATH": str(config.security_standards_src())}
+    result = _run(cmd, env=env)
+    if result is None:
+        return CheckResult("security", UNKNOWN, note="security scanner unavailable")
+
+    try:
+        payload = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return CheckResult("security", UNKNOWN, note="security scanner output unreadable")
+
+    by_severity = payload.get("summary", {}).get("by_severity")
+    if by_severity is None:
+        return CheckResult("security", UNKNOWN, note="security scanner output unreadable")
+
+    findings = payload.get("findings", [])
+    if by_severity.get("BLOCK", 0) > 0:
+        details = [_security_detail(f) for f in findings if f.get("severity") == "BLOCK"]
+        return CheckResult("security", VIOLATION, details=details)
+
+    details = [_security_detail(f) for f in findings]
+    return CheckResult("security", PASS, details=details)

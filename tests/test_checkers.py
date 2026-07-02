@@ -1,7 +1,9 @@
+import json
 import subprocess
 
-from portfolio.checkers import _run, check_project
-from portfolio.matrix import PASS, VIOLATION
+from portfolio import checkers
+from portfolio.checkers import _run, check_project, check_security
+from portfolio.matrix import PASS, VIOLATION, UNKNOWN
 
 
 def _good_active():
@@ -43,3 +45,103 @@ def test_check_project_parking_non_git_is_pass_with_warn_detail(make_repo):
     result = check_project(repo)
     assert result.status == PASS
     assert any(d["id"] == "project.not_git" for d in result.details)
+
+
+def _scan_payload(by_severity, findings):
+    return json.dumps({
+        "meta": {},
+        "summary": {"by_severity": by_severity, "total": sum(by_severity.values())},
+        "findings": findings,
+        "allowlisted": [],
+    })
+
+
+def test_check_security_block_finding_is_violation(monkeypatch, make_repo, tmp_path):
+    repo = make_repo("x")
+    fake_src_repo = tmp_path / "security-standards"
+    monkeypatch.setenv("SECURITY_STANDARDS_REPO", str(fake_src_repo))
+
+    captured = {}
+    finding = {
+        "rule_id": "secrets.bws_token", "severity": "BLOCK", "file": "config.py",
+        "line": 12, "evidence": "...", "remediation": "...", "reason": "committed BWS token",
+        "kind": "regex",
+    }
+
+    def fake_run(cmd, cwd=None, env=None, timeout=None):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        return subprocess.CompletedProcess(
+            args=[], returncode=1,
+            stdout=_scan_payload({"BLOCK": 1, "WARN": 0, "NOTE": 0}, [finding]),
+            stderr="",
+        )
+
+    monkeypatch.setattr(checkers, "_run", fake_run)
+    result = check_security(repo)
+
+    assert result.status == VIOLATION
+    assert len(result.details) == 1
+    assert result.details[0]["id"] == "security.secrets.bws_token"
+    assert result.details[0]["message"] == "config.py:12 committed BWS token"
+
+    cmd = captured["cmd"]
+    assert "-m" in cmd
+    assert "security_scan.cli" in cmd
+    assert captured["env"]["PYTHONPATH"].endswith("security-standards/src")
+
+
+def test_check_security_no_block_findings_is_pass_with_warn_detail(monkeypatch, make_repo, tmp_path):
+    repo = make_repo("x")
+    monkeypatch.setenv("SECURITY_STANDARDS_REPO", str(tmp_path / "security-standards"))
+    finding = {
+        "rule_id": "secrets.weak_pattern", "severity": "WARN", "file": "app.py",
+        "line": 5, "evidence": "...", "remediation": "...", "reason": "possible weak pattern",
+        "kind": "regex",
+    }
+
+    def fake_run(cmd, cwd=None, env=None, timeout=None):
+        return subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout=_scan_payload({"BLOCK": 0, "WARN": 1, "NOTE": 0}, [finding]),
+            stderr="",
+        )
+
+    monkeypatch.setattr(checkers, "_run", fake_run)
+    result = check_security(repo)
+
+    assert result.status == PASS
+    assert len(result.details) == 1
+    assert result.details[0]["id"] == "security.secrets.weak_pattern"
+    assert result.details[0]["message"] == "app.py:5 possible weak pattern"
+
+
+def test_check_security_run_unavailable_is_unknown(monkeypatch, make_repo):
+    repo = make_repo("x")
+    monkeypatch.setattr(checkers, "_run", lambda *a, **k: None)
+    result = check_security(repo)
+    assert result.status == UNKNOWN
+    assert "unavailable" in result.note
+
+
+def test_check_security_unparseable_stdout_is_unknown(monkeypatch, make_repo):
+    repo = make_repo("x")
+
+    def fake_run(cmd, cwd=None, env=None, timeout=None):
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout="not json{", stderr="")
+
+    monkeypatch.setattr(checkers, "_run", fake_run)
+    result = check_security(repo)
+    assert result.status == UNKNOWN
+    assert "unreadable" in result.note
+
+
+def test_check_security_missing_summary_key_is_unknown(monkeypatch, make_repo):
+    repo = make_repo("x")
+
+    def fake_run(cmd, cwd=None, env=None, timeout=None):
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps({"meta": {}}), stderr="")
+
+    monkeypatch.setattr(checkers, "_run", fake_run)
+    result = check_security(repo)
+    assert result.status == UNKNOWN
