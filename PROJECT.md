@@ -7,6 +7,8 @@ purpose: 'PROJECT.md portfolio toolkit: scaffold, validate, capture, and aggrega
 version: 0.1.0
 version_source: pyproject
 updated: '2026-07-02'
+foundation: true
+applicable_standards: [project, security, code]
 ---
 
 ## Backlog
