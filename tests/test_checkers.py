@@ -572,3 +572,47 @@ def test_check_infra_missing_generated_at_is_unknown_unreadable(monkeypatch, tmp
 
     assert result["a"].status == UNKNOWN
     assert "unreadable" in result["a"].note
+
+
+def test_check_infra_null_proposals_is_all_unknown_naming_instance(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    payload = _report_payload(instances={
+        "prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": None},
+        "dev": {"ok": True, "standards_source": "s", "summary": {}, "proposals": []},
+    })
+    _write_report(report_dir, "2026-07-02.json", payload)
+
+    result = check_infra({"a": ["x"]}, _now_for())
+
+    assert result["a"].status == UNKNOWN
+    assert "prod" in result["a"].note
+
+
+def test_check_infra_non_list_proposals_is_all_unknown_naming_instance(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    payload = _report_payload(instances={
+        "prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": {"oops": 1}},
+    })
+    _write_report(report_dir, "2026-07-02.json", payload)
+
+    result = check_infra({"a": ["x"]}, _now_for())
+
+    assert result["a"].status == UNKNOWN
+    assert "prod" in result["a"].note
+
+
+def test_check_infra_proposal_message_never_none(monkeypatch, tmp_path):
+    report_dir = tmp_path / "reports"
+    monkeypatch.setenv("INFRADRIFT_REPORT_DIR", str(report_dir))
+    proposal = {"id": None, "target": {"uuid": "u-1", "name": "myapp"}}
+    payload = _report_payload(instances={
+        "prod": {"ok": True, "standards_source": "s", "summary": {}, "proposals": [proposal]},
+    })
+    _write_report(report_dir, "2026-07-02.json", payload)
+
+    result = check_infra({"a": ["myapp"]}, _now_for())
+
+    assert result["a"].status == VIOLATION
+    assert result["a"].details[0]["message"] == "(no description)"

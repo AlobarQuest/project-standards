@@ -131,7 +131,16 @@ def _latest_infra_report(report_dir: Path) -> Path | None:
 
 
 def _infra_proposal_message(proposal: dict) -> str:
-    return proposal.get("description") or proposal.get("summary") or proposal.get("id")
+    return proposal.get("description") or proposal.get("summary") or proposal.get("id") or "(no description)"
+
+
+def _infra_instance_unusable(inst) -> bool:
+    # An instance is unusable if it isn't a dict, its audit didn't complete
+    # (ok falsy), or its proposals field isn't a list — a malformed instance
+    # must never read as clean.
+    if not isinstance(inst, dict) or not inst.get("ok"):
+        return True
+    return not isinstance(inst.get("proposals", []), list)
 
 
 def _all_infra_unknown(repo_resources: dict[str, list[str]], note: str) -> dict[str, CheckResult]:
@@ -161,13 +170,14 @@ def check_infra(repo_resources: dict[str, list[str]], now: datetime) -> dict[str
     except ValueError:
         return _all_infra_unknown(repo_resources, "infra report unreadable")
 
+    # Judgment call: a naive datetime (now or generated_at) is treated as system-local time.
     now_aware = now.astimezone() if now.tzinfo is None else now
     age_hours = (now_aware.astimezone(timezone.utc) - generated_at.astimezone(timezone.utc)).total_seconds() / 3600
     if age_hours > config.infra_max_age_hours():
         return _all_infra_unknown(repo_resources, f"infra report stale: {report_path.name}")
 
     failed_instances = sorted(
-        name for name, inst in instances.items() if not (isinstance(inst, dict) and inst.get("ok"))
+        name for name, inst in instances.items() if _infra_instance_unusable(inst)
     )
     if failed_instances:
         return _all_infra_unknown(
