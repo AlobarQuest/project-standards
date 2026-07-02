@@ -57,3 +57,36 @@ def check_security(repo: Path) -> CheckResult:
 
     details = [_security_detail(f) for f in findings]
     return CheckResult("security", PASS, details=details)
+
+
+def _code_cmd() -> list[str]:
+    return ["uv", "run", "code-standards", "check"]
+
+
+def _code_detail(line: str) -> dict:
+    tokens = line.split()
+    if len(tokens) < 2:
+        return {"id": "code.violation", "message": line}
+    return {"id": f"code.{tokens[1]}", "message": line}
+
+
+def check_code(repo: Path) -> CheckResult:
+    if not (repo / ".code-standards.toml").exists():
+        details = [{"id": "code.not-onboarded", "message": "repo not onboarded to code-standards"}]
+        return CheckResult("code", VIOLATION, details=details)
+
+    cmd = _code_cmd() + ["--repo", str(repo)]
+    result = _run(cmd, cwd=config.code_standards_repo())
+    if result is None:
+        return CheckResult("code", UNKNOWN, note="code-standards unavailable")
+
+    if result.returncode == 0:
+        return CheckResult("code", PASS)
+
+    if result.returncode == 1:
+        details = [_code_detail(line) for line in result.stdout.splitlines() if line.strip()]
+        return CheckResult("code", VIOLATION, details=details)
+
+    stderr_lines = result.stderr.splitlines()
+    first_line = stderr_lines[0] if stderr_lines else ""
+    return CheckResult("code", UNKNOWN, note=f"code-standards could not run: {first_line}".rstrip())
