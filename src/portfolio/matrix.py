@@ -48,8 +48,14 @@ def resolve_cell(result: CheckResult, exc: list[dict], repo: str) -> tuple[Cell,
     details = []
     for detail in result.details:
         detail = dict(detail)
+        # A malformed proposal can carry a missing/None detail id — treat it as
+        # "" so it never matches a real exception pattern and never crashes
+        # fnmatch (which requires str).
+        detail_id = detail.get("id")
+        if not isinstance(detail_id, str):
+            detail_id = ""
         matched = [idx for idx, entry in enumerate(exc)
-                   if exceptions.matches(entry, repo, result.standard, detail["id"])]
+                   if exceptions.matches(entry, repo, result.standard, detail_id)]
         if matched:
             detail["accepted"] = True
             detail["exception_reason"] = exc[matched[0]]["reason"]

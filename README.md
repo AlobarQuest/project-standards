@@ -171,7 +171,9 @@ tooling, or critical infrastructure to the rest of the portfolio. The matrix ans
 foundation repos themselves comply with their own standards?
 
 **What it shows:** a matrix with rows = repos, columns = standards (`project`, `security`,
-`code`, `infra`, `governance`), cell values = compliance state. Each cell resolves to one of:
+`code`, `infra`), cell values = compliance state, plus a separate machine-scope
+`governance` line (not a matrix column — governance is scoped to the portfolio as a
+whole, not to any one repo). Each cell resolves to one of:
 
 | Symbol | Meaning |
 |--------|---------|

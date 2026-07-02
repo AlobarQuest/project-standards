@@ -133,6 +133,35 @@ def test_infra_batch_wiring_and_resolve(monkeypatch, make_repo, portfolio_env):
     assert row["cells"]["infra"]["details"][0]["id"] == "572:aaa"
 
 
+def test_infra_exception_used_not_reported_as_unused(monkeypatch, make_repo, portfolio_env, tmp_path):
+    _stub_governance_pass(monkeypatch)
+
+    def fake_check_infra(repo_resources, now):
+        assert repo_resources == {"x": ["x"]}
+        return {"x": CheckResult("infra", VIOLATION,
+                                  details=[{"id": "572:abc", "message": "drift"}])}
+
+    monkeypatch.setattr(checkers, "check_infra", fake_check_infra)
+    make_repo("x", files={"PROJECT.md": _manifest(["project", "infra"], coolify=["x"])})
+
+    exc_path = tmp_path / "foundation-exceptions.toml"
+    exc_path.write_text(
+        "[[exception]]\n"
+        'repo = "x"\n'
+        'standard = "infra"\n'
+        'finding = "572:*"\n'
+        'reason = "known infra drift"\n'
+        'added = "2026-07-01"\n'
+    )
+    monkeypatch.setenv("FOUNDATION_EXCEPTIONS", str(exc_path))
+
+    report = run_foundation(roots=[portfolio_env.parent], now=NOW)
+
+    row = report["repos"][0]
+    assert row["cells"]["infra"]["status"] == "accepted-exception"
+    assert report["unused_exceptions"] == []
+
+
 def test_no_foundational_repos_raises(monkeypatch, make_repo, portfolio_env):
     _stub_governance_pass(monkeypatch)
     make_repo("a", files={"PROJECT.md": _manifest(None, foundation_flag=False, name="a")})

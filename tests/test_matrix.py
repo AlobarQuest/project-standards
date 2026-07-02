@@ -104,6 +104,15 @@ def test_resolve_cell_violation_with_empty_details_stays_violation():
     assert used == set()
 
 
+def test_resolve_cell_none_detail_id_does_not_crash_and_stays_violation():
+    result = CheckResult(standard="infra", status=VIOLATION,
+                          details=[{"id": None, "message": "m"}])
+    exceptions = [exc(repo="repo1", standard="infra", finding="572:*", reason="n/a")]
+    cell, used = resolve_cell(result, exceptions, "repo1")
+    assert cell.status == VIOLATION
+    assert used == set()
+
+
 # --- summarize ---
 
 def test_summarize_mixed_rows_and_machine_cell():
