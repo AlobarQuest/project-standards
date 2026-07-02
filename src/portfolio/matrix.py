@@ -120,18 +120,37 @@ def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str
     entries = [(row.repo, std, row.cells[std]) for row in rows for std in STANDARDS if std in row.cells]
     entries.append((MACHINE, GOVERNANCE, machine_cell))
 
-    violation_sections = []
-    for repo, std, cell in entries:
-        non_accepted = [d for d in cell.details if not d.get("accepted")]
-        if non_accepted:
+    def _detail_sections(status: str) -> list[str]:
+        sections = []
+        for repo, std, cell in entries:
+            if cell.status != status:
+                continue
+            non_accepted = [d for d in cell.details if not d.get("accepted")]
+            if not non_accepted:
+                continue
+            seen: set[tuple[str, str]] = set()
             sub = [f"### {repo} / {std}"]
             for d in non_accepted:
+                key = (d["id"], d["message"])
+                if key in seen:
+                    continue
+                seen.add(key)
                 sub.append(f"- {d['id']}: {d['message']}")
-            violation_sections.append("\n".join(sub))
+            sections.append("\n".join(sub))
+        return sections
+
+    violation_sections = _detail_sections(VIOLATION)
     if violation_sections:
         lines.append("## Violations")
         lines.append("")
         lines.append("\n\n".join(violation_sections))
+        lines.append("")
+
+    advisory_sections = _detail_sections(PASS)
+    if advisory_sections:
+        lines.append("## Advisories (non-blocking)")
+        lines.append("")
+        lines.append("\n\n".join(advisory_sections))
         lines.append("")
 
     accepted_lines = []

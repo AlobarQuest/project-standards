@@ -265,3 +265,67 @@ def test_render_digest_machine_scope_line():
     assert "Machine scope: governance = ❌" in out
     assert "### _machine / governance" in out
     assert "- gov:1: bad governance" in out
+
+
+# --- render_digest: violations vs advisories split (PASS-cell details) ---
+
+def test_render_digest_pass_cell_with_details_goes_to_advisories_not_violations():
+    rows = [Row(repo="a", path="/a", cells={
+        "project": Cell(PASS),
+        "security": Cell(PASS, details=[{"id": "warn:1", "message": "minor advisory finding"}]),
+        "code": Cell(PASS),
+        "infra": Cell(NA),
+    })]
+    machine_cell = Cell(PASS)
+    summary = {PASS: 4, VIOLATION: 0, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
+    out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
+    assert "## Violations" not in out
+    assert "## Advisories (non-blocking)" in out
+    assert "### a / security" in out
+    assert "- warn:1: minor advisory finding" in out
+
+
+def test_render_digest_all_pass_no_details_omits_both_violations_and_advisories():
+    rows = _all_pass_rows()
+    machine_cell = Cell(PASS)
+    summary = {PASS: 4, VIOLATION: 0, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
+    out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
+    assert "## Violations" not in out
+    assert "## Advisories (non-blocking)" not in out
+
+
+def test_render_digest_dedupes_duplicate_details_but_json_keeps_full_fidelity():
+    dup_details = [
+        {"id": "sec:1", "message": "duplicate finding"},
+        {"id": "sec:1", "message": "duplicate finding"},
+        {"id": "sec:1", "message": "duplicate finding"},
+    ]
+    rows = [Row(repo="a", path="/a", cells={
+        "project": Cell(PASS),
+        "security": Cell(VIOLATION, details=list(dup_details)),
+        "code": Cell(PASS),
+        "infra": Cell(NA),
+    })]
+    machine_cell = Cell(PASS)
+    summary = {PASS: 3, VIOLATION: 1, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
+    out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
+    assert out.count("- sec:1: duplicate finding") == 1
+
+    report = build_report(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
+    assert len(report["repos"][0]["cells"]["security"]["details"]) == 3
+
+
+def test_render_digest_violation_cell_still_renders_under_violations():
+    rows = [Row(repo="a", path="/a", cells={
+        "project": Cell(PASS),
+        "security": Cell(VIOLATION, details=[{"id": "42:abc", "message": "bad thing"}]),
+        "code": Cell(PASS),
+        "infra": Cell(NA),
+    })]
+    machine_cell = Cell(PASS)
+    summary = {PASS: 3, VIOLATION: 1, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
+    out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
+    assert "## Violations" in out
+    assert "### a / security" in out
+    assert "- 42:abc: bad thing" in out
+    assert "## Advisories (non-blocking)" not in out
