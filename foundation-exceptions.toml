@@ -1,0 +1,12 @@
+# Accepted exceptions for the foundation conformance matrix (portfolio foundation).
+# Pattern follows security-standards docs/decisions/0001-accepted-governance-gaps.md:
+# every entry is a CONSCIOUS accepted risk, not a shortcut.
+#
+# Entry shape (all fields except `revisit` required):
+#   [[exception]]
+#   repo = "brain"            # repo name, or "_machine" for governance
+#   standard = "infra"        # project | security | code | infra | governance
+#   finding = "572:*"         # detail id; trailing * globs (fnmatch) — use for hash-suffixed infra ids
+#   reason = "why this is accepted"
+#   added = "YYYY-MM-DD"
+#   revisit = "trigger that should reopen this"   # recommended
