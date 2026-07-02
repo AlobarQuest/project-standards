@@ -1,4 +1,3 @@
-from pathlib import Path
 import pytest
 from portfolio import exceptions
 
@@ -89,6 +88,20 @@ added = "2026-07-02"
     entries = exceptions.load(p)
     assert len(entries) == 1
     assert "revisit" not in entries[0] or entries[0].get("revisit") is None
+
+def test_load_exception_key_not_a_list_raises(tmp_path):
+    p = tmp_path / "exceptions.toml"
+    p.write_text("exception = 5\n")
+    with pytest.raises(exceptions.ExceptionsError) as exc_info:
+        exceptions.load(p)
+    assert str(p) in str(exc_info.value)
+
+def test_load_exception_list_with_non_table_raises(tmp_path):
+    p = tmp_path / "exceptions.toml"
+    p.write_text('exception = ["str"]\n')
+    with pytest.raises(exceptions.ExceptionsError) as exc_info:
+        exceptions.load(p)
+    assert str(p) in str(exc_info.value)
 
 def test_matches_exact_finding_id():
     entry = {"repo": "brain", "standard": "infra", "finding": "572:bd9d2439"}

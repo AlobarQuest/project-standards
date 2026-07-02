@@ -15,7 +15,11 @@ def load(path: Path) -> list[dict]:
     except tomllib.TOMLDecodeError as e:
         raise ExceptionsError(f"unparseable TOML in {path}: {e}") from e
     entries = data.get("exception", [])
+    if not isinstance(entries, list):
+        raise ExceptionsError(f"{path}: 'exception' must be a list of tables, got {type(entries).__name__}")
     for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ExceptionsError(f"{path}: exception[{i}] must be a table, got {type(entry).__name__}")
         for field in REQUIRED_FIELDS:
             value = entry.get(field)
             if not isinstance(value, str) or not value:
