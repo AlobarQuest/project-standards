@@ -90,3 +90,27 @@ def check_code(repo: Path) -> CheckResult:
     stderr_lines = result.stderr.splitlines()
     first_line = stderr_lines[0] if stderr_lines else ""
     return CheckResult("code", UNKNOWN, note=f"code-standards could not run: {first_line}".rstrip())
+
+
+def check_governance() -> CheckResult:
+    cmd = [sys.executable, "-m", "security_scan.governance", "verify"]
+    env = {**os.environ, "PYTHONPATH": str(config.security_standards_src())}
+    result = _run(cmd, cwd=config.security_standards_repo(), env=env)
+
+    if result is None:
+        return CheckResult("governance", UNKNOWN, note="governance verifier unavailable")
+
+    if result.returncode == 0:
+        return CheckResult("governance", PASS)
+
+    if result.returncode == 1:
+        details = []
+        for line in result.stdout.splitlines():
+            if line.strip():
+                first_token = line.split()[0]
+                details.append({"id": f"governance.{first_token}", "message": line})
+        return CheckResult("governance", VIOLATION, details=details)
+
+    stderr_lines = result.stderr.splitlines()
+    first_line = stderr_lines[0] if stderr_lines else ""
+    return CheckResult("governance", UNKNOWN, note=f"governance verifier failed with rc {result.returncode}: {first_line}".rstrip())

@@ -2,7 +2,7 @@ import json
 import subprocess
 
 from portfolio import checkers, config
-from portfolio.checkers import _run, check_project, check_security, check_code
+from portfolio.checkers import _run, check_project, check_security, check_code, check_governance
 from portfolio.matrix import PASS, VIOLATION, UNKNOWN
 
 
@@ -281,3 +281,81 @@ def test_check_code_cmd_construction(monkeypatch, make_repo):
     assert "check" in checkers._code_cmd()
     assert captured["cmd"][-2:] == ["--repo", str(repo)]
     assert captured["cwd"] == config.code_standards_repo()
+
+
+def test_check_governance_rc_zero_is_pass(monkeypatch, tmp_path):
+    fake_src_repo = tmp_path / "security-standards"
+    monkeypatch.setenv("SECURITY_STANDARDS_REPO", str(fake_src_repo))
+    captured = {}
+
+    def fake_run(cmd, cwd=None, env=None, timeout=None):
+        captured["cmd"] = cmd
+        captured["cwd"] = cwd
+        captured["env"] = env
+        return subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="governance verify: artifacts + headers + ownership in sync",
+            stderr="",
+        )
+
+    monkeypatch.setattr(checkers, "_run", fake_run)
+    result = check_governance()
+
+    assert result.standard == "governance"
+    assert result.status == PASS
+    assert "security_scan.governance" in captured["cmd"]
+    assert "verify" in captured["cmd"]
+    assert captured["cwd"] == config.security_standards_repo()
+    assert captured["env"]["PYTHONPATH"].endswith("security-standards/src")
+
+
+def test_check_governance_rc_one_is_violation_with_details(monkeypatch, tmp_path):
+    fake_src_repo = tmp_path / "security-standards"
+    monkeypatch.setenv("SECURITY_STANDARDS_REPO", str(fake_src_repo))
+
+    def fake_run(cmd, cwd=None, env=None, timeout=None):
+        return subprocess.CompletedProcess(
+            args=[], returncode=1,
+            stdout="artifact hook: bws-write-guard.sh\nownership stale: OWNERSHIP.md",
+            stderr="",
+        )
+
+    monkeypatch.setattr(checkers, "_run", fake_run)
+    result = check_governance()
+
+    assert result.standard == "governance"
+    assert result.status == VIOLATION
+    assert len(result.details) == 2
+    assert result.details[0]["id"] == "governance.artifact"
+    assert result.details[0]["message"] == "artifact hook: bws-write-guard.sh"
+    assert result.details[1]["id"] == "governance.ownership"
+    assert result.details[1]["message"] == "ownership stale: OWNERSHIP.md"
+
+
+def test_check_governance_rc_three_is_unknown_with_rc_in_note(monkeypatch, tmp_path):
+    fake_src_repo = tmp_path / "security-standards"
+    monkeypatch.setenv("SECURITY_STANDARDS_REPO", str(fake_src_repo))
+
+    def fake_run(cmd, cwd=None, env=None, timeout=None):
+        return subprocess.CompletedProcess(
+            args=[], returncode=3, stdout="", stderr="something went wrong\n",
+        )
+
+    monkeypatch.setattr(checkers, "_run", fake_run)
+    result = check_governance()
+
+    assert result.standard == "governance"
+    assert result.status == UNKNOWN
+    assert "3" in result.note
+    assert "something went wrong" in result.note
+
+
+def test_check_governance_run_unavailable_is_unknown(monkeypatch, tmp_path):
+    fake_src_repo = tmp_path / "security-standards"
+    monkeypatch.setenv("SECURITY_STANDARDS_REPO", str(fake_src_repo))
+    monkeypatch.setattr(checkers, "_run", lambda *a, **k: None)
+    result = check_governance()
+
+    assert result.standard == "governance"
+    assert result.status == UNKNOWN
+    assert "unavailable" in result.note
