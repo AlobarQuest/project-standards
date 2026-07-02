@@ -45,8 +45,9 @@ def check_security(repo: Path) -> CheckResult:
     except (json.JSONDecodeError, TypeError):
         return CheckResult("security", UNKNOWN, note="security scanner output unreadable")
 
-    by_severity = payload.get("summary", {}).get("by_severity")
-    if by_severity is None:
+    summary = payload.get("summary") if isinstance(payload, dict) else None
+    by_severity = summary.get("by_severity") if isinstance(summary, dict) else None
+    if not isinstance(by_severity, dict):
         return CheckResult("security", UNKNOWN, note="security scanner output unreadable")
 
     findings = payload.get("findings", [])

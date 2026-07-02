@@ -145,3 +145,49 @@ def test_check_security_missing_summary_key_is_unknown(monkeypatch, make_repo):
     monkeypatch.setattr(checkers, "_run", fake_run)
     result = check_security(repo)
     assert result.status == UNKNOWN
+
+
+def _run_returning(stdout):
+    def fake_run(cmd, cwd=None, env=None, timeout=None):
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+    return fake_run
+
+
+def test_check_security_non_dict_json_payload_is_unknown(monkeypatch, make_repo):
+    repo = make_repo("x")
+    monkeypatch.setattr(checkers, "_run", _run_returning(json.dumps([1, 2, 3])))
+    result = check_security(repo)
+    assert result.status == UNKNOWN
+    assert "unreadable" in result.note
+
+
+def test_check_security_non_dict_summary_is_unknown(monkeypatch, make_repo):
+    repo = make_repo("x")
+    monkeypatch.setattr(checkers, "_run", _run_returning(json.dumps({"summary": "nope"})))
+    result = check_security(repo)
+    assert result.status == UNKNOWN
+    assert "unreadable" in result.note
+
+
+def test_check_security_non_dict_by_severity_is_unknown(monkeypatch, make_repo):
+    repo = make_repo("x")
+    monkeypatch.setattr(checkers, "_run",
+                        _run_returning(json.dumps({"summary": {"by_severity": "nope"}})))
+    result = check_security(repo)
+    assert result.status == UNKNOWN
+    assert "unreadable" in result.note
+
+
+def test_check_security_block_finding_null_line_renders_dash(monkeypatch, make_repo):
+    repo = make_repo("x")
+    finding = {
+        "rule_id": "manifest.drift", "severity": "BLOCK", "file": ".bws-secrets.toml",
+        "line": None, "evidence": "...", "remediation": "...", "reason": "manifest drift",
+        "kind": "manifest",
+    }
+    monkeypatch.setattr(
+        checkers, "_run",
+        _run_returning(_scan_payload({"BLOCK": 1, "WARN": 0, "NOTE": 0}, [finding])))
+    result = check_security(repo)
+    assert result.status == VIOLATION
+    assert result.details[0]["message"] == ".bws-secrets.toml:- manifest drift"
