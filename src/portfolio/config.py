@@ -49,3 +49,22 @@ def infra_max_age_hours() -> int:
         return int(override) if override else INFRA_MAX_AGE_H
     except ValueError:
         return INFRA_MAX_AGE_H
+
+def project_standards_repo() -> Path:
+    override = os.environ.get("PROJECT_STANDARDS_REPO")
+    return Path(override) if override else Path(__file__).resolve().parents[2]
+
+def standards_repos() -> dict[str, Path]:
+    return {
+        "project": project_standards_repo(),
+        "code": code_standards_repo(),
+        "security": security_standards_repo(),
+    }
+
+def claude_settings_path() -> Path:
+    override = os.environ.get("CLAUDE_SETTINGS_JSON")
+    return Path(override) if override else Path.home() / ".claude" / "settings.json"
+
+def launchagents_dir() -> Path:
+    override = os.environ.get("LAUNCHAGENTS_DIR")
+    return Path(override) if override else Path.home() / "Library" / "LaunchAgents"
