@@ -6,7 +6,7 @@ check does real work — "wired but runs hollow" (the quality.yml incident) need
 execution evidence, a future drift-loop enhancement. See spec §4.
 """
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import yaml
 
@@ -62,16 +62,49 @@ def _verify_workflow(repo: Path, check_id: str, rest: str) -> dict | None:
     return None
 
 
+def _iter_hook_commands(hooks_config: object):
+    """Walk the hooks config, yielding every registered "command" string.
+
+    Shape: {"EventName": [{"matcher": ..., "hooks": [{"type": "command",
+    "command": "<string>"}, ...]}, ...]}. Walks defensively — tolerates
+    missing keys and non-dict/non-list nodes rather than raising.
+    """
+    if not isinstance(hooks_config, dict):
+        return
+    for event_entries in hooks_config.values():
+        if not isinstance(event_entries, list):
+            continue
+        for matcher_entry in event_entries:
+            if not isinstance(matcher_entry, dict):
+                continue
+            inner_hooks = matcher_entry.get("hooks")
+            if not isinstance(inner_hooks, list):
+                continue
+            for hook in inner_hooks:
+                if isinstance(hook, dict) and isinstance(hook.get("command"), str):
+                    yield hook["command"]
+
+
+def _hook_name_registered(name: str, hooks_config: object) -> bool:
+    for command in _iter_hook_commands(hooks_config):
+        if any(PurePosixPath(token).name == name for token in command.split()):
+            return True
+    return False
+
+
 def _verify_hook(check_id: str, name: str) -> dict | None:
     # A hook only runs if REGISTERED in settings.json — file existence in
     # ~/.claude/hooks/ proves deployment, not wiring (deployed != wired).
+    # Matches against command basenames only (not a raw JSON substring) so
+    # JSON keys ("command", "Stop") and path fragments ("gate.sh") can't
+    # false-PASS a check that was never actually registered.
     path = config.claude_settings_path()
     try:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return {"id": "checks.not-wired",
                 "message": f"{check_id}: cannot read hook registrations in {path}"}
-    if name not in json.dumps(data.get("hooks", {})):
+    if not _hook_name_registered(name, data.get("hooks", {})):
         return {"id": "checks.not-wired",
                 "message": f"{check_id}: hook {name!r} not registered in settings.json"}
     return None

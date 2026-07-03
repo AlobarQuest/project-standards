@@ -66,6 +66,27 @@ def test_hook_checks_settings_registration(tmp_path, machine):
     assert _ids(bad) == ["checks.not-wired"]
 
 
+def test_hook_path_fragment_not_wired(tmp_path, machine):
+    repo = tmp_path / "r2b"
+    repo.mkdir()
+    bad = check_required_checks(repo, [{"id": "g", "executor": "hook:gate.sh"}], True)
+    assert _ids(bad) == ["checks.not-wired"]
+
+
+def test_hook_json_key_command_not_wired(tmp_path, machine):
+    repo = tmp_path / "r2c"
+    repo.mkdir()
+    bad = check_required_checks(repo, [{"id": "g", "executor": "hook:command"}], True)
+    assert _ids(bad) == ["checks.not-wired"]
+
+
+def test_hook_json_key_event_not_wired(tmp_path, machine):
+    repo = tmp_path / "r2d"
+    repo.mkdir()
+    bad = check_required_checks(repo, [{"id": "g", "executor": "hook:Stop"}], True)
+    assert _ids(bad) == ["checks.not-wired"]
+
+
 def test_launchagent_plist_existence(tmp_path, machine):
     repo = tmp_path / "r3"
     repo.mkdir()
