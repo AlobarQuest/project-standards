@@ -27,4 +27,5 @@ required_checks:
 
 - [ ] (P2) CI guard: STANDARD_VERSION must be bumped when the standard's rules change in a diff (WS-1.3 follow-up; without it versioning rusts silently) — added 2026-07-03
 - [ ] (P3) compliance rows key by repo basename — two same-named repos under different roots (~/Projects/x vs ~/Developer/x) would cross-assign infra cells and stale-exception attribution; key by path — added 2026-07-03
+- [ ] (P3) Burn down the full-repo ruff baseline (166 errors, red on main) or make make check baseline-aware — the CLAUDE.md 'make check must be green' gate is currently untruthful; enforced gate today is diff-scoped only — added 2026-07-03
 ## Future plans
