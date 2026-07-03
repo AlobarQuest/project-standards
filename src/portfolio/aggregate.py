@@ -1,6 +1,6 @@
 import json
 import subprocess
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import date, datetime
 from pathlib import Path
 
@@ -24,6 +24,7 @@ class ProjectRecord:
     head_date: str | None
     stale: bool
     findings: list[dict]
+    compliance: dict = field(default_factory=dict)   # column -> {status, details, note}
 
 def _head_date(repo: Path) -> str | None:
     if not is_git(repo):
@@ -92,4 +93,22 @@ def render_digest(records, untriaged_count: int) -> str:
             lines.append(f"### {r.name}")
             lines += [f"- {('('+i.priority+') ') if i.priority else ''}{i.text}" for i in items]
             lines.append("")
+    return "\n".join(lines) + "\n" + render_compliance(records)
+
+def render_compliance(records) -> str:
+    from .matrix import COLUMNS, SYMBOLS, ACCEPTED
+    lines = ["## Compliance", "",
+             "| name | " + " | ".join(COLUMNS) + " |",
+             "|" + "---|" * (len(COLUMNS) + 1)]
+    for r in sorted(records, key=lambda x: x.name):
+        cells = [r.compliance.get(col, {"status": "unknown"}) for col in COLUMNS]
+        lines.append("| " + r.name + " | "
+                     + " | ".join(SYMBOLS[c["status"]] for c in cells) + " |")
+    accepted = [(r.name, col, d) for r in records
+                for col, c in r.compliance.items() if c["status"] == ACCEPTED
+                for d in c["details"] if d.get("accepted")]
+    if accepted:
+        lines += ["", "### Accepted exceptions in effect", ""]
+        lines += [f"- {name} / {col} / {d['id']} — {d['exception_reason']}"
+                  for name, col, d in accepted]
     return "\n".join(lines) + "\n"

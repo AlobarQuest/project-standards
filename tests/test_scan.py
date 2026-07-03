@@ -1,6 +1,7 @@
 from datetime import date
 from portfolio.scan import scan
 from portfolio import config
+from portfolio.matrix import CheckResult, PASS
 import json
 
 def test_scan_counts_fails(make_repo, portfolio_env):
@@ -20,3 +21,24 @@ def test_scan_writes_artifacts(make_repo, portfolio_env):
     assert summary["projects"] == 1
     assert config.json_path().exists() and config.digest_path().exists()
     assert json.loads(config.json_path().read_text())["projects"][0]["name"] == "x"
+
+def test_scan_attaches_compliance(monkeypatch, make_repo, portfolio_env, standards_env):
+    monkeypatch.setattr("portfolio.compliance.checkers.check_project",
+                        lambda r: CheckResult("project", PASS))
+    declared = make_repo("declared", files={"PROJECT.md": (
+        "---\nname: declared\ntier: active\nstatus: active\nversion: 1.0\n"
+        "version_source: none\npurpose: p\nupdated: '2026-07-03'\n"
+        "applicable_standards:\n  project: '1.0'\n---\n\n## Backlog\n")})
+    make_repo("plain", files={"PROJECT.md": (
+        "---\nname: plain\ntier: parking\nstatus: idea\npurpose: p\n---\n\n## Backlog\n")})
+    make_repo("bare")            # no PROJECT.md
+
+    result = scan(roots=[declared.parent])
+    data = json.loads((portfolio_env / "portfolio.json").read_text())
+    by_name = {p["name"]: p for p in data["projects"]}
+    assert by_name["declared"]["compliance"]["project"]["status"] == "pass"
+    assert by_name["plain"]["compliance"]["project"]["status"] == "unknown"
+    assert by_name["bare"]["compliance"]["project"]["note"] == "no manifest"
+    assert "compliance_violations" in result
+    digest = (portfolio_env / "PORTFOLIO.md").read_text()
+    assert "## Compliance" in digest
