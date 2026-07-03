@@ -1,5 +1,7 @@
 import subprocess
+
 import pytest
+
 
 @pytest.fixture
 def portfolio_env(monkeypatch, tmp_path):
@@ -24,6 +26,22 @@ def make_repo(tmp_path):
             if commit:
                 subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
                 subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
-                                "commit", "-q", "--allow-empty", "-m", "init"], cwd=repo, check=True)
+                                "commit", "-q", "--allow-empty", "-m", "init"],
+                               cwd=repo, check=True)
         return repo
     return _make
+
+@pytest.fixture
+def standards_env(monkeypatch, tmp_path):
+    """Fake standards repos with STANDARD_VERSION files, so tests never read
+    the real ~/Projects checkouts. Returns the dict of repo paths."""
+    repos = {}
+    for std, env in (("project", "PROJECT_STANDARDS_REPO"),
+                     ("code", "CODE_STANDARDS_REPO"),
+                     ("security", "SECURITY_STANDARDS_REPO")):
+        repo = tmp_path / f".std-{std}"
+        repo.mkdir()
+        (repo / "STANDARD_VERSION").write_text("1.0\n")
+        monkeypatch.setenv(env, str(repo))
+        repos[std] = repo
+    return repos
