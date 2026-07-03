@@ -1,5 +1,9 @@
+from datetime import date
+
 import pytest
+
 from portfolio import exceptions
+from portfolio.exceptions import expired, local_matches, validate_local
 
 VALID_TOML = """\
 [[exception]]
@@ -122,11 +126,6 @@ def test_matches_wrong_standard_false():
 def test_matches_glob_does_not_match_other_prefix():
     entry = {"repo": "brain", "standard": "infra", "finding": "572:*"}
     assert exceptions.matches(entry, "brain", "infra", "999:x") is False
-
-
-from datetime import date
-
-from portfolio.exceptions import validate_local, local_matches, expired
 
 
 def _entry(**over):

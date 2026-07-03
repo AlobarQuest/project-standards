@@ -3,6 +3,7 @@ import tomllib
 from datetime import date
 from pathlib import Path
 
+
 class ExceptionsError(Exception): ...
 
 REQUIRED_FIELDS = ("repo", "standard", "finding", "reason", "added")
@@ -32,7 +33,6 @@ def matches(entry: dict, repo: str, standard: str, finding_id: str) -> bool:
             and fnmatch.fnmatch(finding_id, entry["finding"]))
 
 
-LOCAL_REQUIRED = ("standard", "finding", "reason", "added")
 LOCAL_STANDARDS = {"project", "security", "code", "infra", "checks"}
 
 
