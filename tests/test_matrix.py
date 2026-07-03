@@ -408,3 +408,20 @@ def test_resolve_local_wrong_standard_does_not_mask():
                          details=[{"id": "security.x", "message": "m"}])
     cell, used = resolve_cell_local(result, [_exc()], TODAY)
     assert cell.status == VIOLATION and used == set()
+
+
+def test_render_digest_violation_with_expired_exception_shows_suffix():
+    rows = [Row(repo="a", path="/a", cells={
+        "project": Cell(PASS),
+        "security": Cell(VIOLATION, details=[{
+            "id": "42:abc", "message": "expired exception",
+            "exception_expired": "2026-06-01"
+        }]),
+        "code": Cell(PASS),
+        "infra": Cell(NA),
+    })]
+    machine_cell = Cell(PASS)
+    summary = {PASS: 3, VIOLATION: 1, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
+    out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
+    assert "## Violations" in out
+    assert "- 42:abc: expired exception [exception expired 2026-06-01]" in out
