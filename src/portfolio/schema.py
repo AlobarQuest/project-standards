@@ -32,18 +32,13 @@ def validate_frontmatter(fm: dict) -> list[Finding]:
     if "foundation" in fm and not isinstance(fm["foundation"], bool):
         findings.append(Finding("FAIL", "bad_type", f"foundation must be a bool, got {fm['foundation']!r}"))
 
-    applicable_standards = fm.get("applicable_standards")
-    applicable_standards_valid = False
-    if "applicable_standards" in fm:
-        if not isinstance(applicable_standards, list) or not all(isinstance(s, str) for s in applicable_standards):
-            findings.append(Finding("FAIL", "bad_type",
-                                     f"applicable_standards must be a list of strings, got {applicable_standards!r}"))
-        else:
-            applicable_standards_valid = True
-            for item in applicable_standards:
-                if item not in KNOWN_STANDARDS:
-                    findings.append(Finding("FAIL", "bad_enum",
-                                             f"applicable_standards item invalid: {item!r}"))
+    from .contract import parse_contract  # local import: contract imports KNOWN_STANDARDS
+
+    contract = parse_contract(fm)
+    if contract.fatal:
+        findings.append(Finding("FAIL", "contract_error", contract.fatal))
+    for error in contract.errors:
+        findings.append(Finding("FAIL", "contract_error", error))
 
     if "coolify_resources" in fm:
         coolify_resources = fm["coolify_resources"]
@@ -52,10 +47,10 @@ def validate_frontmatter(fm: dict) -> list[Finding]:
                                      f"coolify_resources must be a list of strings, got {coolify_resources!r}"))
 
     if fm.get("foundation") is True:
-        if not applicable_standards:
+        if not contract.declared:
             findings.append(Finding("WARN", "foundation_incomplete",
                                      "foundation is true but applicable_standards is missing or empty"))
-        elif applicable_standards_valid and "infra" in applicable_standards and not fm.get("coolify_resources"):
+        elif "infra" in contract.standards and not fm.get("coolify_resources"):
             findings.append(Finding("WARN", "foundation_incomplete",
                                      "applicable_standards includes infra but coolify_resources is missing or empty"))
 
