@@ -1,10 +1,24 @@
 import json
+from datetime import date
 
 from portfolio import matrix
 from portfolio.matrix import (
-    CheckResult, Cell, Row,
-    PASS, VIOLATION, ACCEPTED, NA, UNKNOWN,
-    na_cell, resolve_cell, summarize, build_report, render_digest,
+    ACCEPTED,
+    COLUMNS,
+    NA,
+    PASS,
+    UNKNOWN,
+    VIOLATION,
+    Cell,
+    CheckResult,
+    Row,
+    build_report,
+    na_cell,
+    render_digest,
+    resolve_cell,
+    resolve_cell_local,
+    summarize,
+    unknown_cell,
 )
 
 
@@ -145,7 +159,10 @@ def test_summarize_mixed_rows_and_machine_cell():
 
 def test_build_report_json_round_trips_and_exit_code():
     rows = [
-        Row(repo="a", path="/a", cells={"project": Cell(VIOLATION, details=[{"id": "1", "message": "m"}])}),
+        Row(
+            repo="a", path="/a",
+            cells={"project": Cell(VIOLATION, details=[{"id": "1", "message": "m"}])}
+        ),
     ]
     machine_cell = Cell(PASS)
     summary = {PASS: 1, VIOLATION: 1, ACCEPTED: 0, NA: 0, UNKNOWN: 0}
@@ -156,7 +173,7 @@ def test_build_report_json_round_trips_and_exit_code():
     assert reloaded == report
     assert report["exit_code"] == 1
     assert report["generated"] == "2026-07-02T00:00:00Z"
-    assert report["standards"] == matrix.STANDARDS
+    assert report["standards"] == matrix.COLUMNS
     assert report["repos"][0]["repo"] == "a"
     assert report["machine"]["governance"]["status"] == PASS
     assert report["unused_exceptions"] == unused
@@ -176,9 +193,9 @@ def test_build_report_missing_standard_falls_back_to_na():
     summary = {PASS: 2, VIOLATION: 0, ACCEPTED: 0, NA: 0, UNKNOWN: 0}
     report = build_report(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
     cells = report["repos"][0]["cells"]
-    assert set(cells) == set(matrix.STANDARDS)
+    assert set(cells) == set(matrix.COLUMNS)
     assert cells["project"]["status"] == PASS
-    for std in ("security", "code", "infra"):
+    for std in ("security", "code", "infra", "checks"):
         assert cells[std]["status"] == NA
 
 
@@ -227,8 +244,10 @@ def test_render_digest_violation_row_and_section():
 def test_render_digest_accepted_cell_symbol():
     rows = [Row(repo="a", path="/a", cells={
         "project": Cell(PASS),
-        "security": Cell(ACCEPTED, details=[{"id": "42:abc", "message": "bad thing",
-                                              "accepted": True, "exception_reason": "glob covers it"}]),
+        "security": Cell(ACCEPTED, details=[{
+            "id": "42:abc", "message": "bad thing",
+            "accepted": True, "exception_reason": "glob covers it"
+        }]),
         "code": Cell(PASS),
         "infra": Cell(NA),
     })]
@@ -338,3 +357,71 @@ def test_render_digest_violation_cell_still_renders_under_violations():
     assert "### a / security" in out
     assert "- 42:abc: bad thing" in out
     assert "## Advisories (non-blocking)" not in out
+
+
+# --- Task 3: checks column + local cell resolution ---
+
+
+def _exc(**over):
+    base = {"standard": "code", "finding": "code.*", "reason": "accepted",
+            "added": "2026-07-03"}
+    return {**base, **over}
+
+
+TODAY = date(2026, 7, 3)
+
+
+def test_columns_include_checks():
+    assert COLUMNS == ["project", "security", "code", "infra", "checks"]
+
+
+def test_unknown_cell_carries_note():
+    cell = unknown_cell("no manifest")
+    assert cell.status == UNKNOWN and cell.note == "no manifest"
+
+
+def test_resolve_local_pass_unknown_na_pass_through():
+    for status in ("pass", UNKNOWN, NA):
+        cell, used = resolve_cell_local(CheckResult("code", status), [], TODAY)
+        assert cell.status == status and used == set()
+
+
+def test_resolve_local_masks_matching_violation():
+    result = CheckResult("code", VIOLATION,
+                         details=[{"id": "code.not-onboarded", "message": "m"}])
+    cell, used = resolve_cell_local(result, [_exc()], TODAY)
+    assert cell.status == ACCEPTED and used == {0}
+    assert cell.details[0]["exception_reason"] == "accepted"
+
+
+def test_resolve_local_expired_exception_does_not_mask():
+    result = CheckResult("code", VIOLATION,
+                         details=[{"id": "code.not-onboarded", "message": "m"}])
+    cell, used = resolve_cell_local(result, [_exc(review_by="2026-06-01")], TODAY)
+    assert cell.status == VIOLATION
+    assert cell.details[0]["exception_expired"] == "2026-06-01"
+    assert used == {0}          # matched (so not stale), just expired
+
+
+def test_resolve_local_wrong_standard_does_not_mask():
+    result = CheckResult("security", VIOLATION,
+                         details=[{"id": "security.x", "message": "m"}])
+    cell, used = resolve_cell_local(result, [_exc()], TODAY)
+    assert cell.status == VIOLATION and used == set()
+
+
+def test_render_digest_violation_with_expired_exception_shows_suffix():
+    rows = [Row(repo="a", path="/a", cells={
+        "project": Cell(PASS),
+        "security": Cell(VIOLATION, details=[{
+            "id": "42:abc", "message": "expired exception",
+            "exception_expired": "2026-06-01"
+        }]),
+        "code": Cell(PASS),
+        "infra": Cell(NA),
+    })]
+    machine_cell = Cell(PASS)
+    summary = {PASS: 3, VIOLATION: 1, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
+    out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
+    assert "## Violations" in out
+    assert "- 42:abc: expired exception [exception expired 2026-06-01]" in out

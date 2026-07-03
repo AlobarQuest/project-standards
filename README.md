@@ -250,6 +250,88 @@ surfaces when accepted risks have been resolved and the exception can be deleted
 
 ---
 
+## foundation_contract
+
+WS-1.3 extends the census above with a versioned frontmatter contract, a fifth `checks`
+matrix column, and portfolio-wide (not just foundational-repo) compliance reporting. Full
+design: [`docs/superpowers/specs/2026-07-03-ws13-foundation-contract-design.md`](docs/superpowers/specs/2026-07-03-ws13-foundation-contract-design.md).
+
+**Schema** (in a repo's `PROJECT.md` frontmatter):
+
+```yaml
+foundation: true            # WS-0.0, unchanged
+foundation_contract: 1      # schema version marker
+applicable_standards:
+  project: "1.0"
+  security: "1.0"
+  code: "1.0"
+  infra: null               # applicable; standard unversioned — no finding
+required_checks:
+  - id: security-scan
+    executor: github-actions:security-scan.yml   # or github-actions:<file>:<job>
+  - id: session-scan-gate
+    executor: hook:bws-scan-gate.sh
+exceptions:
+  - standard: code
+    finding: "code.not-onboarded"    # fnmatch pattern (same matching as today)
+    reason: "why this is accepted"
+    added: 2026-07-03
+    review_by: 2026-09-01            # optional; expiry unmasks
+    revisit: "trigger text"          # optional
+```
+
+The old list form of `applicable_standards` (e.g. `[project, security, code]`) still parses —
+each listed standard is treated as applicable-but-unpinned, which raises a
+`<std>.version-unpinned` finding as a migration nudge rather than a hard break.
+`foundation_contract`, `required_checks`, and `exceptions` are valid on any repo that
+declares `applicable_standards`, not only `foundation: true` repos (this is what WS-0.3
+rollout to non-foundation repos will reuse). A `foundation_contract` value other than `1`
+is a validator FAIL with all cells unknown — the matrix never guesses a future schema.
+
+**`STANDARD_VERSION` semantics — a pin is an acknowledgment, not a behavior selector.**
+Each standards repo (`project-standards`, `code-standards`, `security-standards`) carries a
+root `STANDARD_VERSION` file (e.g. `1.0`), bumped by hand only when the standard's actual
+requirements change (never for tool bugfixes). Checkers always run the current tooling
+regardless of what a consumer has pinned — pinning `security: "1.0"` does not select
+version-1.0 behavior, it records "this repo has acknowledged security standard 1.0". Drift
+(`<std>.version-drift`) means the standard moved and the repo hasn't re-acknowledged; a
+missing/unreadable `STANDARD_VERSION` is a version-unknown note, not drift. `infra` has no
+`STANDARD_VERSION` (it lives in infra-brain, not a repo file) — `infra: null` is a
+legitimate, finding-free pin.
+
+**Exceptions moved into frontmatter, with expiry.** Each repo's own `exceptions` list (schema
+above) is now the primary exceptions mechanism — self-attestation, since a solo operator's
+PRs are merged only by Devon and every exception in effect is listed in both the
+FOUNDATION.md and PORTFOLIO.md digests for weekly review. An optional `review_by` date makes
+exceptions time-boxed: once expired, the entry stops masking and the finding reappears with
+an "exception expired (review_by YYYY-MM-DD)" detail. A malformed exception entry is always a
+FAIL finding and never masks anything — a broken excuse can't excuse. The root-level
+`foundation-exceptions.toml` (repo/standard/finding keyed) still exists but has **shrunk to
+machine/governance scope only** — it has no per-repo host for frontmatter-native exceptions.
+
+**Matrix gains a fifth `checks` column** verifying `required_checks` are actually wired
+(static existence checks, not execution-evidence — see the spec's §4 limitation on what this
+does *not* catch):
+
+| Executor form | Wiring check | Cell states |
+|---|---|---|
+| `github-actions:<file>[:job]` | workflow file (and job key, if given) exists | ✅ wired / ❌ `checks.not-wired` |
+| `hook:<name>` | hook is *registered* in `~/.claude/settings.json`, not just present under `~/.claude/hooks/` | ✅ wired / ❌ `checks.not-wired` |
+| `launchagent:<label>` | `~/Library/LaunchAgents/<label>.plist` exists (plist-exists ≠ loaded, a stated gap) | ✅ wired / ❌ `checks.not-wired` |
+| unparseable executor string | — | ❌ `checks.bad-executor` |
+| `foundation: true` repo with no `required_checks` declared | — | ❌ `checks.none-declared` |
+| non-foundation repo, no `required_checks` declared | — | `—` not-applicable |
+
+**`portfolio scan` (weekly, portfolio-wide) also renders compliance now.** `PORTFOLIO.md`
+gains a `## Compliance` section — the same per-standard cell resolution as `foundation`, run
+across every repo with a `PROJECT.md`, not just the 8 foundational ones. Repos that haven't
+declared `applicable_standards` get all-`?` rows noted "standards not declared (pending
+rollout)" with **no checker execution** (keeps weekly runtime bounded); repos with no
+`PROJECT.md` at all get an all-`?` row noted "no manifest". `scan` only reports — it never
+fails the exit code; blocking on violations stays `portfolio foundation`'s job.
+
+---
+
 ## Where things live
 
 | What | Location |

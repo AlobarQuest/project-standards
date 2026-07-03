@@ -1,8 +1,10 @@
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 
 from . import exceptions
 
 STANDARDS = ["project", "security", "code", "infra"]   # per-repo column order
+CHECKS = "checks"                                       # required_checks wiring column
+COLUMNS = STANDARDS + [CHECKS]                          # full column order
 GOVERNANCE = "governance"                               # machine-scope pseudo-standard
 MACHINE = "_machine"                                    # repo key for governance exceptions
 PASS, VIOLATION, ACCEPTED, NA, UNKNOWN = (
@@ -19,7 +21,7 @@ SYMBOLS = {
 @dataclass(frozen=True)
 class CheckResult:            # raw adapter output, pre-exception resolution
     standard: str
-    status: str               # pass | violation | unknown (adapters never emit others)
+    status: str               # pass | violation | unknown | not-applicable
     details: list = field(default_factory=list)   # [{"id": str, "message": str}, ...]
     note: str | None = None
 
@@ -38,6 +40,42 @@ class Row:
 
 def na_cell() -> Cell:
     return Cell(NA, [])
+
+
+def unknown_cell(note: str) -> Cell:
+    return Cell(UNKNOWN, [], note)
+
+
+def resolve_cell_local(result: CheckResult, entries: list[dict], today) -> tuple[Cell, set[int]]:
+    """resolve_cell against a repo's own frontmatter exceptions (no repo field,
+    review_by expiry). Matched-but-expired entries count as used (not stale) but
+    do not mask."""
+    if result.status in (PASS, UNKNOWN, NA):
+        return Cell(result.status, result.details, result.note), set()
+
+    used: set[int] = set()
+    details = []
+    for detail in result.details:
+        detail = dict(detail)
+        detail_id = detail.get("id")
+        if not isinstance(detail_id, str):
+            detail_id = ""
+        matched = [i for i, e in enumerate(entries)
+                   if exceptions.local_matches(e, result.standard, detail_id)]
+        active = [i for i in matched if not exceptions.expired(entries[i], today)]
+        if active:
+            detail["accepted"] = True
+            detail["exception_reason"] = entries[active[0]]["reason"]
+        elif matched:
+            detail["exception_expired"] = entries[matched[0]].get("review_by")
+        used.update(matched)
+        details.append(detail)
+
+    if details and all(d.get("accepted") for d in details):
+        status = ACCEPTED
+    else:
+        status = VIOLATION
+    return Cell(status, details, result.note), used
 
 
 def resolve_cell(result: CheckResult, exc: list[dict], repo: str) -> tuple[Cell, set[int]]:
@@ -81,12 +119,12 @@ def summarize(rows: list[Row], machine_cell: Cell) -> dict:
 def build_report(rows, machine_cell, summary, unused_exceptions, generated: str) -> dict:
     return {
         "generated": generated,
-        "standards": STANDARDS,
+        "standards": COLUMNS,
         "repos": [
             {
                 "repo": row.repo,
                 "path": row.path,
-                "cells": {std: asdict(row.cells.get(std, na_cell())) for std in STANDARDS},
+                "cells": {std: asdict(row.cells.get(std, na_cell())) for std in COLUMNS},
             }
             for row in rows
         ],
@@ -101,7 +139,20 @@ def _cell_symbol(cell: Cell) -> str:
     return SYMBOLS[cell.status]
 
 
-def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str) -> str:
+def _stale_repo_exceptions_lines(stale_repo_exceptions: dict | None) -> list[str]:
+    if not stale_repo_exceptions:
+        return []
+    lines = ["## Stale frontmatter exceptions (matched nothing — delete or fix)", ""]
+    for repo, repo_entries in sorted(stale_repo_exceptions.items()):
+        for entry in repo_entries:
+            lines.append(f"- {repo} / {entry['standard']} / "
+                         f"{entry['finding']} — {entry['reason']}")
+    lines.append("")
+    return lines
+
+
+def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str,
+                  stale_repo_exceptions: dict | None = None) -> str:
     lines = ["# Foundation Conformance", ""]
     lines.append(
         f"Generated: {generated} · repos: {len(rows)} · "
@@ -109,13 +160,15 @@ def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str
     )
     lines.append("")
 
-    header = "| repo | " + " | ".join(STANDARDS) + " |"
-    sep = "|" + "---|" * (len(STANDARDS) + 1)
+    header = "| repo | " + " | ".join(COLUMNS) + " |"
+    sep = "|" + "---|" * (len(COLUMNS) + 1)
     lines.append(header)
     lines.append(sep)
     for row in rows:
-        cells = " | ".join(_cell_symbol(row.cells[std]) if std in row.cells else _cell_symbol(na_cell())
-                            for std in STANDARDS)
+        cells = " | ".join(
+            _cell_symbol(row.cells[std]) if std in row.cells else _cell_symbol(na_cell())
+            for std in COLUMNS
+        )
         lines.append(f"| {row.repo} | {cells} |")
     lines.append("")
 
@@ -123,7 +176,10 @@ def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str
     lines.append("")
 
     # Collect entries: (repo, standard, cell) including machine/governance
-    entries = [(row.repo, std, row.cells[std]) for row in rows for std in STANDARDS if std in row.cells]
+    entries = [
+        (row.repo, std, row.cells[std])
+        for row in rows for std in COLUMNS if std in row.cells
+    ]
     entries.append((MACHINE, GOVERNANCE, machine_cell))
 
     def _detail_sections(status: str) -> list[str]:
@@ -141,7 +197,9 @@ def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str
                 if key in seen:
                     continue
                 seen.add(key)
-                sub.append(f"- {d['id']}: {d['message']}")
+                suffix = (f" [exception expired {d['exception_expired']}]"
+                          if d.get("exception_expired") else "")
+                sub.append(f"- {d['id']}: {d['message']}{suffix}")
             sections.append("\n".join(sub))
         return sections
 
@@ -184,7 +242,11 @@ def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str
         lines.append("## Stale exceptions (matched nothing — delete or fix)")
         lines.append("")
         for entry in unused_exceptions:
-            lines.append(f"- {entry['repo']} / {entry['standard']} / {entry['finding']} — {entry['reason']}")
+            line = (f"- {entry['repo']} / {entry['standard']} / "
+                    f"{entry['finding']} — {entry['reason']}")
+            lines.append(line)
         lines.append("")
+
+    lines.extend(_stale_repo_exceptions_lines(stale_repo_exceptions))
 
     return "\n".join(lines).rstrip() + "\n"

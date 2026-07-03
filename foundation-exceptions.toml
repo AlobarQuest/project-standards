@@ -1,12 +1,12 @@
-# Accepted exceptions for the foundation conformance matrix (portfolio foundation).
-# Pattern follows security-standards docs/decisions/0001-accepted-governance-gaps.md:
-# every entry is a CONSCIOUS accepted risk, not a shortcut.
+# Accepted exceptions for the MACHINE/governance scope of the foundation matrix.
+# Repo-scoped exceptions live in each repo's PROJECT.md frontmatter (`exceptions:`)
+# as of WS-1.3 — entries here match ONLY repo = "_machine" governance findings.
 #
 # Entry shape (all fields except `revisit` required):
 #   [[exception]]
-#   repo = "brain"            # repo name, or "_machine" for governance
-#   standard = "infra"        # project | security | code | infra | governance
-#   finding = "572:*"         # detail id; trailing * globs (fnmatch) — use for hash-suffixed infra ids
+#   repo = "_machine"
+#   standard = "governance"
+#   finding = "governance.check-13*"   # detail id; trailing * globs (fnmatch)
 #   reason = "why this is accepted"
 #   added = "YYYY-MM-DD"
 #   revisit = "trigger that should reopen this"   # recommended

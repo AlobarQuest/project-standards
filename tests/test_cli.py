@@ -25,14 +25,21 @@ def test_cli_triage_assign_without_repo_errors(portfolio_env):
     assert main(["triage", "--assign", "abc"]) == 2
 
 
-def test_cli_foundation_valid_repo_returns_zero(make_repo, portfolio_env, capsys, monkeypatch):
+def test_cli_foundation_valid_repo_returns_zero(
+        make_repo, portfolio_env, capsys, monkeypatch, standards_env):
     """Valid foundational repo with [project] only → returns 0, capsys contains 'foundation: 1 repos' and 'violations=0'."""
     # Monkeypatch check_governance to return PASS (cheaper than a real run)
     monkeypatch.setattr("portfolio.checkers.check_governance", lambda: CheckResult("governance", PASS))
 
     body = ("---\nname: foundational\ntier: active\nstatus: active\nversion: 1.0.0\nversion_source: package.json\n"
-            "purpose: core infra\nupdated: 2026-06-25\nfoundation: true\napplicable_standards: [project]\n---\n\n## Backlog\n")
+            "purpose: core infra\nupdated: 2026-06-25\nfoundation: true\n"
+            "applicable_standards:\n  project: '1.0'\n"
+            "required_checks:\n- id: quality\n  executor: github-actions:quality.yml\n"
+            "---\n\n## Backlog\n")
     repo = make_repo("foundational", files={"PROJECT.md": body})
+    wf = repo / ".github" / "workflows" / "quality.yml"
+    wf.parent.mkdir(parents=True)
+    wf.write_text("jobs:\n  quality: {}\n")
 
     assert main(["foundation", "--roots", str(repo.parent)]) == 0
     out = capsys.readouterr().out
@@ -40,13 +47,20 @@ def test_cli_foundation_valid_repo_returns_zero(make_repo, portfolio_env, capsys
     assert "violations=0" in out
 
 
-def test_cli_foundation_broken_manifest_returns_one(make_repo, portfolio_env, capsys, monkeypatch):
+def test_cli_foundation_broken_manifest_returns_one(
+        make_repo, portfolio_env, capsys, monkeypatch, standards_env):
     """Broken manifest (missing required fields) → returns 1, output contains 'violations=1'."""
     monkeypatch.setattr("portfolio.checkers.check_governance", lambda: CheckResult("governance", PASS))
 
     # Missing required fields for active tier (status, version, version_source)
-    body = ("---\nname: broken\ntier: active\npurpose: broken\nupdated: 2026-06-25\nfoundation: true\napplicable_standards: [project]\n---\n\n## Backlog\n")
+    body = ("---\nname: broken\ntier: active\npurpose: broken\nupdated: 2026-06-25\nfoundation: true\n"
+            "applicable_standards:\n  project: '1.0'\n"
+            "required_checks:\n- id: quality\n  executor: github-actions:quality.yml\n"
+            "---\n\n## Backlog\n")
     repo = make_repo("broken", files={"PROJECT.md": body})
+    wf = repo / ".github" / "workflows" / "quality.yml"
+    wf.parent.mkdir(parents=True)
+    wf.write_text("jobs:\n  quality: {}\n")
 
     assert main(["foundation", "--roots", str(repo.parent)]) == 1
     out = capsys.readouterr().out
