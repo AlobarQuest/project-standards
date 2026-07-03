@@ -139,7 +139,20 @@ def _cell_symbol(cell: Cell) -> str:
     return SYMBOLS[cell.status]
 
 
-def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str) -> str:
+def _stale_repo_exceptions_lines(stale_repo_exceptions: dict | None) -> list[str]:
+    if not stale_repo_exceptions:
+        return []
+    lines = ["## Stale frontmatter exceptions (matched nothing — delete or fix)", ""]
+    for repo, repo_entries in sorted(stale_repo_exceptions.items()):
+        for entry in repo_entries:
+            lines.append(f"- {repo} / {entry['standard']} / "
+                         f"{entry['finding']} — {entry['reason']}")
+    lines.append("")
+    return lines
+
+
+def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str,
+                  stale_repo_exceptions: dict | None = None) -> str:
     lines = ["# Foundation Conformance", ""]
     lines.append(
         f"Generated: {generated} · repos: {len(rows)} · "
@@ -184,7 +197,9 @@ def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str
                 if key in seen:
                     continue
                 seen.add(key)
-                sub.append(f"- {d['id']}: {d['message']}")
+                suffix = (f" [exception expired {d['exception_expired']}]"
+                          if d.get("exception_expired") else "")
+                sub.append(f"- {d['id']}: {d['message']}{suffix}")
             sections.append("\n".join(sub))
         return sections
 
@@ -231,5 +246,7 @@ def render_digest(rows, machine_cell, summary, unused_exceptions, generated: str
                     f"{entry['finding']} — {entry['reason']}")
             lines.append(line)
         lines.append("")
+
+    lines.extend(_stale_repo_exceptions_lines(stale_repo_exceptions))
 
     return "\n".join(lines).rstrip() + "\n"
