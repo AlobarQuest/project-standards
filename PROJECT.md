@@ -8,7 +8,16 @@ version: 0.1.0
 version_source: pyproject
 updated: '2026-07-02'
 foundation: true
-applicable_standards: [project, security, code]
+foundation_contract: 1
+applicable_standards:
+  project: '1.0'
+  security: '1.0'
+  code: '1.0'
+required_checks:
+- id: quality
+  executor: github-actions:quality.yml
+- id: portfolio-scan
+  executor: launchagent:com.devon.portfolio-scan
 ---
 
 ## Backlog
