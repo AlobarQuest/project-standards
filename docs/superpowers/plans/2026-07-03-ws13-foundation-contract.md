@@ -402,13 +402,26 @@ def expired(entry: dict, today: date) -> bool:
 In `src/portfolio/contract.py`, add `from . import exceptions` and replace the exceptions block at the end of `parse_contract`:
 
 ```python
-    raw_exc = fm.get("exceptions") or []
-    if not isinstance(raw_exc, list):
+    raw_exc = fm.get("exceptions")
+    if raw_exc is None:
+        raw_exc = []
+    elif not isinstance(raw_exc, list):
+        # isinstance BEFORE any falsy coercion: `exceptions: {}` or `0` must
+        # record an error, never silently read as "no exceptions" (T1 review).
         c.errors.append(f"exceptions must be a list, got {raw_exc!r}")
         raw_exc = []
     c.exceptions, exc_errors = exceptions.validate_local(raw_exc)
     c.errors.extend(exc_errors)
     return c
+```
+
+Also in this task: remove the dead imports in `tests/test_contract.py` (`Path`, `Contract`, `CONTRACT_VERSION` are unused — T1 review Minor), and add a test that a falsy non-list `exceptions` value records an error:
+
+```python
+def test_exceptions_falsy_non_list_is_error():
+    c = parse_contract({"applicable_standards": {"project": "1.0"},
+                        "exceptions": {}})
+    assert c.exceptions == [] and c.errors
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
