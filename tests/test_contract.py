@@ -1,8 +1,4 @@
-from pathlib import Path
-
-from portfolio.contract import (
-    Contract, parse_contract, current_standard_versions, CONTRACT_VERSION,
-)
+from portfolio.contract import parse_contract, current_standard_versions
 
 
 def test_list_form_is_declared_but_unpinned():
@@ -74,3 +70,21 @@ def test_current_versions_reads_files(monkeypatch, tmp_path):
     monkeypatch.setenv("SECURITY_STANDARDS_REPO", str(tmp_path / "security"))
     assert current_standard_versions() == {"project": "1.0", "code": "2.1",
                                            "security": None}
+
+
+def test_contract_validates_exceptions_and_drops_invalid():
+    fm = {"applicable_standards": {"code": "1.0"},
+          "exceptions": [
+              {"standard": "code", "finding": "code.*", "reason": "r",
+               "added": "2026-07-03"},
+              {"standard": "code"},          # invalid -> dropped + error
+          ]}
+    c = parse_contract(fm)
+    assert len(c.exceptions) == 1
+    assert c.errors
+
+
+def test_exceptions_falsy_non_list_is_error():
+    c = parse_contract({"applicable_standards": {"project": "1.0"},
+                        "exceptions": {}})
+    assert c.exceptions == [] and c.errors

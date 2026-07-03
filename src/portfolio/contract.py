@@ -1,7 +1,7 @@
 """Parse the foundation_contract block from PROJECT.md frontmatter."""
 from dataclasses import dataclass, field
 
-from . import config
+from . import config, exceptions
 from .schema import KNOWN_STANDARDS
 
 CONTRACT_VERSION = 1
@@ -53,10 +53,16 @@ def parse_contract(fm: dict) -> Contract:
     elif checks is not None:
         c.errors.append(f"required_checks must be a list, got {checks!r}")
 
-    c.exceptions = fm.get("exceptions") or []
-    if not isinstance(c.exceptions, list):
-        c.errors.append(f"exceptions must be a list, got {c.exceptions!r}")
-        c.exceptions = []
+    raw_exc = fm.get("exceptions")
+    if raw_exc is None:
+        raw_exc = []
+    elif not isinstance(raw_exc, list):
+        # isinstance BEFORE any falsy coercion: `exceptions: {}` or `0` must
+        # record an error, never silently read as "no exceptions" (T1 review).
+        c.errors.append(f"exceptions must be a list, got {raw_exc!r}")
+        raw_exc = []
+    c.exceptions, exc_errors = exceptions.validate_local(raw_exc)
+    c.errors.extend(exc_errors)
     return c
 
 
