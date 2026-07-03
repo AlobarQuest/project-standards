@@ -1,13 +1,15 @@
 import json
 import subprocess
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
 from . import config
-from .manifest import read_manifest, parse_backlog
 from .detect import is_git
+from .manifest import parse_backlog, read_manifest
+from .matrix import ACCEPTED, COLUMNS, SYMBOLS, UNKNOWN
 from .validator import lint
+
 
 @dataclass
 class ProjectRecord:
@@ -96,12 +98,11 @@ def render_digest(records, untriaged_count: int) -> str:
     return "\n".join(lines) + "\n" + render_compliance(records)
 
 def render_compliance(records) -> str:
-    from .matrix import COLUMNS, SYMBOLS, ACCEPTED
     lines = ["## Compliance", "",
              "| name | " + " | ".join(COLUMNS) + " |",
              "|" + "---|" * (len(COLUMNS) + 1)]
     for r in sorted(records, key=lambda x: x.name):
-        cells = [r.compliance.get(col, {"status": "unknown"}) for col in COLUMNS]
+        cells = [r.compliance.get(col, {"status": UNKNOWN}) for col in COLUMNS]
         lines.append("| " + r.name + " | "
                      + " | ".join(SYMBOLS[c["status"]] for c in cells) + " |")
     accepted = [(r.name, col, d) for r in records

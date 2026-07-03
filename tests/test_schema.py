@@ -28,8 +28,9 @@ def test_parking_does_not_require_version():
     assert validate_frontmatter({"name": "x", "tier": "parking", "status": "idea", "purpose": "x"}) == []
 
 def test_bad_enum_is_fail():
+    fm = {"name": "x", "tier": "parking", "status": "bogus", "purpose": "x"}
     assert any(f.code == "bad_enum" and f.severity == "FAIL"
-               for f in validate_frontmatter({"name": "x", "tier": "parking", "status": "bogus", "purpose": "x"}))
+               for f in validate_frontmatter(fm))
 
 def test_foundation_not_bool_is_bad_type():
     assert any(f.code == "bad_type" and f.severity == "FAIL" and "foundation" in f.message

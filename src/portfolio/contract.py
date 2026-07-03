@@ -18,13 +18,7 @@ class Contract:
     errors: list = field(default_factory=list)           # shape problems (never mask)
 
 
-def parse_contract(fm: dict) -> Contract:
-    c = Contract()
-    marker = fm.get("foundation_contract")
-    if marker is not None and marker != CONTRACT_VERSION:
-        c.fatal = f"foundation_contract must be {CONTRACT_VERSION}, got {marker!r}"
-        return c
-
+def _parse_standards(fm: dict, c: Contract) -> None:
     raw = fm.get("applicable_standards")
     if isinstance(raw, list):
         if raw and all(isinstance(s, str) for s in raw):
@@ -47,6 +41,8 @@ def parse_contract(fm: dict) -> Contract:
         c.standards = {}
     c.declared = bool(c.standards)
 
+
+def _parse_checks_and_exceptions(fm: dict, c: Contract) -> None:
     checks = fm.get("required_checks")
     if isinstance(checks, list):
         c.required_checks = checks
@@ -63,6 +59,17 @@ def parse_contract(fm: dict) -> Contract:
         raw_exc = []
     c.exceptions, exc_errors = exceptions.validate_local(raw_exc)
     c.errors.extend(exc_errors)
+
+
+def parse_contract(fm: dict) -> Contract:
+    c = Contract()
+    marker = fm.get("foundation_contract")
+    if marker is not None and marker != CONTRACT_VERSION:
+        c.fatal = f"foundation_contract must be {CONTRACT_VERSION}, got {marker!r}"
+        return c
+
+    _parse_standards(fm, c)
+    _parse_checks_and_exceptions(fm, c)
     return c
 
 

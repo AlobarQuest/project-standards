@@ -1,4 +1,4 @@
-from portfolio.contract import parse_contract, current_standard_versions
+from portfolio.contract import current_standard_versions, parse_contract
 
 
 def test_list_form_is_declared_but_unpinned():
