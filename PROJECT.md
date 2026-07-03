@@ -25,4 +25,5 @@ required_checks:
 - [x] (P2) Onboard to code-standards (foundation matrix red: code.not-onboarded) — added 2026-07-02
 - [x] (P1) Foundation conformance matrix — census keys, checker adapters, portfolio foundation CLI — added 2026-07-02 Plan: docs/superpowers/plans/2026-07-02-foundation-conformance-matrix.md
 
+- [ ] (P2) CI guard: STANDARD_VERSION must be bumped when the standard's rules change in a diff (WS-1.3 follow-up; without it versioning rusts silently) — added 2026-07-03
 ## Future plans
