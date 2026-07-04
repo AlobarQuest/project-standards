@@ -14,14 +14,14 @@
 .PHONY: check fix
 
 check:
-	@if [ -f pyproject.toml ]; then if command -v ruff >/dev/null 2>&1; then ruff check .; else echo "ruff not installed — skipping ruff check"; fi; fi
-	@if [ -f pyproject.toml ]; then if command -v ruff >/dev/null 2>&1; then ruff format --check .; else echo "ruff not installed — skipping ruff format check"; fi; fi
-	@if [ -f pyproject.toml ]; then if command -v pyright >/dev/null 2>&1; then pyright; else echo "pyright not installed — skipping pyright"; fi; fi
+	.venv/bin/ruff check .
+	.venv/bin/ruff format --check .
+	.venv/bin/pyright
 	@if [ -f eslint.config.mjs ]; then if command -v eslint >/dev/null 2>&1; then eslint .; else echo "eslint not installed — skipping eslint"; fi; fi
 	@if [ -f tsconfig.json ]; then if command -v tsc >/dev/null 2>&1; then tsc --noEmit; else echo "tsc not installed — skipping type-check"; fi; fi
 	@if [ -f .prettierrc ]; then if command -v prettier >/dev/null 2>&1; then prettier --check .; else echo "prettier not installed — skipping prettier check"; fi; fi
 	@if [ -f .shellcheckrc ]; then if command -v shellcheck >/dev/null 2>&1; then find . -name '*.sh' -not -path './.git/*' -exec shellcheck {} +; else echo "shellcheck not installed — skipping shellcheck"; fi; fi
-	@if [ -f pyproject.toml ]; then if command -v pytest >/dev/null 2>&1; then pytest; rc=$$?; if [ $$rc -ne 0 ] && [ $$rc -ne 5 ]; then exit $$rc; fi; else echo "pytest not installed — skipping tests"; fi; fi
+	.venv/bin/pytest
 
 fix:
 	@if [ -f pyproject.toml ]; then if command -v ruff >/dev/null 2>&1; then ruff check --fix .; else echo "ruff not installed — skipping ruff fix"; fi; fi

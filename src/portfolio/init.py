@@ -7,10 +7,13 @@ from .manifest import Manifest, read_manifest, write_manifest
 ACTIVE_BODY = "## Backlog\n\n## Future plans\n"
 PARKING_BODY = ""
 
+
 def init_repo(repo: Path, tier: str = "active", today: date | None = None) -> Manifest:
     today = today or date.today()
     existing = read_manifest(repo)
-    fm = dict(existing.frontmatter) if existing and "_yaml_error" not in existing.frontmatter else {}
+    fm = (
+        dict(existing.frontmatter) if existing and "_yaml_error" not in existing.frontmatter else {}
+    )
     body = existing.body if existing else (ACTIVE_BODY if tier == "active" else PARKING_BODY)
 
     fm.setdefault("name", detect.detect_name(repo))

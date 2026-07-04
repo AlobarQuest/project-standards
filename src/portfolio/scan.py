@@ -3,7 +3,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from . import compliance, config
-from .aggregate import build_records, to_json, render_digest
+from .aggregate import build_records, render_digest, to_json
 from .inbox import read_inbox
 from .manifest import read_manifest
 from .matrix import VIOLATION
@@ -33,6 +33,11 @@ def scan(roots=None, today: date | None = None, now: datetime | None = None) -> 
     fails = sum(1 for r in records for f in r.findings if f["severity"] == "FAIL")
     warns = sum(1 for r in records for f in r.findings if f["severity"] == "WARN")
     compliance_violations = sum(
-        1 for r in records for c in r.compliance.values() if c["status"] == VIOLATION)
-    return {"projects": len(records), "fails": fails, "warns": warns,
-            "compliance_violations": compliance_violations}
+        1 for r in records for c in r.compliance.values() if c["status"] == VIOLATION
+    )
+    return {
+        "projects": len(records),
+        "fails": fails,
+        "warns": warns,
+        "compliance_violations": compliance_violations,
+    }

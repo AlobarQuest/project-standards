@@ -12,6 +12,7 @@ def portfolio_env(monkeypatch, tmp_path):
     monkeypatch.setenv("PORTFOLIO_HOME", str(home))
     return home
 
+
 @pytest.fixture
 def make_repo(tmp_path):
     def _make(name, git=True, files=None, commit=True):
@@ -25,20 +26,37 @@ def make_repo(tmp_path):
             subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
             if commit:
                 subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
-                subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
-                                "commit", "-q", "--allow-empty", "-m", "init"],
-                               cwd=repo, check=True)
+                subprocess.run(
+                    [
+                        "git",
+                        "-c",
+                        "user.email=t@t",
+                        "-c",
+                        "user.name=t",
+                        "commit",
+                        "-q",
+                        "--allow-empty",
+                        "-m",
+                        "init",
+                    ],
+                    cwd=repo,
+                    check=True,
+                )
         return repo
+
     return _make
+
 
 @pytest.fixture
 def standards_env(monkeypatch, tmp_path):
     """Fake standards repos with STANDARD_VERSION files, so tests never read
     the real ~/Projects checkouts. Returns the dict of repo paths."""
     repos = {}
-    for std, env in (("project", "PROJECT_STANDARDS_REPO"),
-                     ("code", "CODE_STANDARDS_REPO"),
-                     ("security", "SECURITY_STANDARDS_REPO")):
+    for std, env in (
+        ("project", "PROJECT_STANDARDS_REPO"),
+        ("code", "CODE_STANDARDS_REPO"),
+        ("security", "SECURITY_STANDARDS_REPO"),
+    ):
         repo = tmp_path / f".std-{std}"
         repo.mkdir()
         (repo / "STANDARD_VERSION").write_text("1.0\n")

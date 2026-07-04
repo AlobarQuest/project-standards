@@ -1,4 +1,5 @@
 """Per-repo compliance cell resolution — shared by `foundation` and `scan`."""
+
 from datetime import date, datetime
 from pathlib import Path
 
@@ -28,32 +29,33 @@ _PER_REPO_CHECKERS = {
 
 
 def _unknown_row(repo: Path, note: str) -> Row:
-    return Row(repo=repo.name, path=str(repo),
-               cells={col: unknown_cell(note) for col in COLUMNS})
+    return Row(repo=repo.name, path=str(repo), cells={col: unknown_cell(note) for col in COLUMNS})
 
 
-def _with_version_findings(result: CheckResult, std: str, pin,
-                           current: dict) -> CheckResult:
+def _with_version_findings(result: CheckResult, std: str, pin, current: dict) -> CheckResult:
     """Inject version-drift/unpinned findings. A pin is an acknowledgment, not a
     behavior selector — drift is known regardless of checker status, so it
     escalates to violation even over an unknown checker result."""
     if std not in VERSIONED_STANDARDS:
-        return result                       # infra: unversioned in WS-1.3
+        return result  # infra: unversioned in WS-1.3
     current_version = current.get(std)
-    if current_version is None:             # no STANDARD_VERSION file: note, never drift
+    if current_version is None:  # no STANDARD_VERSION file: note, never drift
         note = f"{std} standard version unknown (no STANDARD_VERSION)"
         note = f"{result.note}; {note}" if result.note else note
         return CheckResult(std, result.status, details=result.details, note=note)
     if pin is None:
-        detail = {"id": f"{std}.version-unpinned",
-                  "message": f"standard version not pinned (current {current_version})"}
+        detail = {
+            "id": f"{std}.version-unpinned",
+            "message": f"standard version not pinned (current {current_version})",
+        }
     elif pin != current_version:
-        detail = {"id": f"{std}.version-drift",
-                  "message": f"pinned {pin}, current {current_version}"}
+        detail = {
+            "id": f"{std}.version-drift",
+            "message": f"pinned {pin}, current {current_version}",
+        }
     else:
         return result
-    return CheckResult(std, VIOLATION, details=[*result.details, detail],
-                       note=result.note)
+    return CheckResult(std, VIOLATION, details=[*result.details, detail], note=result.note)
 
 
 def _parse_or_unknown(fm: dict | None) -> tuple[Contract | None, str | None]:
@@ -72,8 +74,9 @@ def _parse_or_unknown(fm: dict | None) -> tuple[Contract | None, str | None]:
     return contract, None
 
 
-def _resolve_declared(repo: Path, fm: dict, contract: Contract, current: dict,
-                       today: date) -> tuple[dict, set[int]]:
+def _resolve_declared(
+    repo: Path, fm: dict, contract: Contract, current: dict, today: date
+) -> tuple[dict, set[int]]:
     """Cells for a declared repo, excluding `infra` (resolved in the batch pass)."""
     cells = {}
     used: set[int] = set()
@@ -82,7 +85,7 @@ def _resolve_declared(repo: Path, fm: dict, contract: Contract, current: dict,
             cells[std] = na_cell()
             continue
         if std == "infra":
-            continue                    # resolved in the batch pass below
+            continue  # resolved in the batch pass below
         result = _PER_REPO_CHECKERS[std](repo)
         result = _with_version_findings(result, std, contract.standards[std], current)
         cell, u = resolve_cell_local(result, contract.exceptions, today)
@@ -90,29 +93,35 @@ def _resolve_declared(repo: Path, fm: dict, contract: Contract, current: dict,
         used |= u
 
     checks_result = wiring.check_required_checks(
-        repo, contract.required_checks, fm.get("foundation") is True)
+        repo, contract.required_checks, fm.get("foundation") is True
+    )
     cell, u = resolve_cell_local(checks_result, contract.exceptions, today)
     cells[CHECKS] = cell
     used |= u
     return cells, used
 
 
-def _resolve_infra(rows: list[Row], declared: list[tuple[Path, dict, Contract]],
-                   used_by_repo: dict[str, set[int]], now: datetime, today: date) -> None:
-    rows_by_name = {row.repo: row for row in rows}
+def _resolve_infra(
+    rows: list[Row],
+    declared: list[tuple[Path, dict, Contract]],
+    used_by_repo: dict[str, set[int]],
+    now: datetime,
+    today: date,
+) -> None:
+    rows_by_path = {str(Path(row.path).resolve()): row for row in rows}
     repo_resources = {
-        repo.name: fm.get("coolify_resources") or []
+        str(repo.resolve()): fm.get("coolify_resources") or []
         for repo, fm, contract in declared
         if "infra" in contract.standards
     }
     if not repo_resources:
         return
     infra_results = checkers.check_infra(repo_resources, now)
-    contracts = {repo.name: contract for repo, fm, contract in declared}
-    for name, result in infra_results.items():
-        cell, u = resolve_cell_local(result, contracts[name].exceptions, today)
-        rows_by_name[name].cells["infra"] = cell
-        used_by_repo[name] |= u
+    contracts = {str(repo.resolve()): contract for repo, fm, contract in declared}
+    for path, result in infra_results.items():
+        cell, u = resolve_cell_local(result, contracts[path].exceptions, today)
+        rows_by_path[path].cells["infra"] = cell
+        used_by_repo[path] |= u
 
 
 def build_rows(repo_fm_pairs, now: datetime, today: date):
@@ -134,17 +143,20 @@ def build_rows(repo_fm_pairs, now: datetime, today: date):
             rows.append(_unknown_row(repo, note))
             continue
 
+        assert contract is not None
         cells, used = _resolve_declared(repo, fm, contract, current, today)
         row = Row(repo=repo.name, path=str(repo), cells=cells)
         rows.append(row)
         declared.append((repo, fm, contract))
-        used_by_repo[repo.name] = used
+        used_by_repo[str(repo.resolve())] = used
 
     _resolve_infra(rows, declared, used_by_repo, now, today)
 
     for repo, _fm, contract in declared:
-        stale = [entry for i, entry in enumerate(contract.exceptions)
-                 if i not in used_by_repo[repo.name]]
+        repo_key = str(repo.resolve())
+        stale = [
+            entry for i, entry in enumerate(contract.exceptions) if i not in used_by_repo[repo_key]
+        ]
         if stale:
-            stale_by_repo[repo.name] = stale
+            stale_by_repo[repo_key] = stale
     return rows, stale_by_repo

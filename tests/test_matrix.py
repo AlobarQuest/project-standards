@@ -28,6 +28,7 @@ def exc(repo="repo1", standard="security", finding="42:*", reason="known issue")
 
 # --- na_cell ---
 
+
 def test_na_cell():
     c = na_cell()
     assert c.status == NA
@@ -35,6 +36,7 @@ def test_na_cell():
 
 
 # --- resolve_cell ---
+
 
 def test_resolve_cell_pass_passes_through_unchanged():
     result = CheckResult(standard="security", status=PASS, details=[], note="all good")
@@ -54,8 +56,9 @@ def test_resolve_cell_unknown_preserves_note():
 
 
 def test_resolve_cell_violation_fully_covered_by_one_glob_exception():
-    result = CheckResult(standard="security", status=VIOLATION,
-                          details=[{"id": "42:abc", "message": "bad thing"}])
+    result = CheckResult(
+        standard="security", status=VIOLATION, details=[{"id": "42:abc", "message": "bad thing"}]
+    )
     exceptions = [exc(repo="repo1", standard="security", finding="42:*", reason="glob covers it")]
     cell, used = resolve_cell(result, exceptions, "repo1")
     assert cell.status == ACCEPTED
@@ -65,9 +68,14 @@ def test_resolve_cell_violation_fully_covered_by_one_glob_exception():
 
 
 def test_resolve_cell_two_details_one_covered_stays_violation():
-    result = CheckResult(standard="security", status=VIOLATION,
-                          details=[{"id": "42:abc", "message": "bad thing"},
-                                   {"id": "99:xyz", "message": "other thing"}])
+    result = CheckResult(
+        standard="security",
+        status=VIOLATION,
+        details=[
+            {"id": "42:abc", "message": "bad thing"},
+            {"id": "99:xyz", "message": "other thing"},
+        ],
+    )
     exceptions = [exc(repo="repo1", standard="security", finding="42:*", reason="covers 42 only")]
     cell, used = resolve_cell(result, exceptions, "repo1")
     assert cell.status == VIOLATION
@@ -80,8 +88,9 @@ def test_resolve_cell_two_details_one_covered_stays_violation():
 
 
 def test_resolve_cell_no_exceptions_stays_violation_used_empty():
-    result = CheckResult(standard="security", status=VIOLATION,
-                          details=[{"id": "42:abc", "message": "bad thing"}])
+    result = CheckResult(
+        standard="security", status=VIOLATION, details=[{"id": "42:abc", "message": "bad thing"}]
+    )
     cell, used = resolve_cell(result, [], "repo1")
     assert cell.status == VIOLATION
     assert used == set()
@@ -89,8 +98,9 @@ def test_resolve_cell_no_exceptions_stays_violation_used_empty():
 
 
 def test_resolve_cell_exception_for_different_repo_does_not_match():
-    result = CheckResult(standard="security", status=VIOLATION,
-                          details=[{"id": "42:abc", "message": "bad thing"}])
+    result = CheckResult(
+        standard="security", status=VIOLATION, details=[{"id": "42:abc", "message": "bad thing"}]
+    )
     exceptions = [exc(repo="other-repo", standard="security", finding="42:*", reason="n/a")]
     cell, used = resolve_cell(result, exceptions, "repo1")
     assert cell.status == VIOLATION
@@ -98,8 +108,9 @@ def test_resolve_cell_exception_for_different_repo_does_not_match():
 
 
 def test_resolve_cell_overlapping_exceptions_all_marked_used():
-    result = CheckResult(standard="infra", status=VIOLATION,
-                          details=[{"id": "572:bdc", "message": "backup missing"}])
+    result = CheckResult(
+        standard="infra", status=VIOLATION, details=[{"id": "572:bdc", "message": "backup missing"}]
+    )
     exceptions = [
         exc(repo="repo1", standard="infra", finding="572:*", reason="broad glob"),
         exc(repo="repo1", standard="infra", finding="572:bd*", reason="narrow glob"),
@@ -119,8 +130,7 @@ def test_resolve_cell_violation_with_empty_details_stays_violation():
 
 
 def test_resolve_cell_none_detail_id_does_not_crash_and_stays_violation():
-    result = CheckResult(standard="infra", status=VIOLATION,
-                          details=[{"id": None, "message": "m"}])
+    result = CheckResult(standard="infra", status=VIOLATION, details=[{"id": None, "message": "m"}])
     exceptions = [exc(repo="repo1", standard="infra", finding="572:*", reason="n/a")]
     cell, used = resolve_cell(result, exceptions, "repo1")
     assert cell.status == VIOLATION
@@ -129,20 +139,29 @@ def test_resolve_cell_none_detail_id_does_not_crash_and_stays_violation():
 
 # --- summarize ---
 
+
 def test_summarize_mixed_rows_and_machine_cell():
     rows = [
-        Row(repo="a", path="/a", cells={
-            "project": Cell(PASS),
-            "security": Cell(VIOLATION, details=[{"id": "1", "message": "m"}]),
-            "code": Cell(ACCEPTED, details=[{"id": "2", "message": "m", "accepted": True}]),
-            "infra": Cell(NA),
-        }),
-        Row(repo="b", path="/b", cells={
-            "project": Cell(PASS),
-            "security": Cell(UNKNOWN, note="tool missing"),
-            "code": Cell(PASS),
-            "infra": Cell(VIOLATION, details=[{"id": "3", "message": "m"}]),
-        }),
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(VIOLATION, details=[{"id": "1", "message": "m"}]),
+                "code": Cell(ACCEPTED, details=[{"id": "2", "message": "m", "accepted": True}]),
+                "infra": Cell(NA),
+            },
+        ),
+        Row(
+            repo="b",
+            path="/b",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(UNKNOWN, note="tool missing"),
+                "code": Cell(PASS),
+                "infra": Cell(VIOLATION, details=[{"id": "3", "message": "m"}]),
+            },
+        ),
     ]
     machine_cell = Cell(PASS)
     summary = summarize(rows, machine_cell)
@@ -157,11 +176,13 @@ def test_summarize_mixed_rows_and_machine_cell():
 
 # --- build_report ---
 
+
 def test_build_report_json_round_trips_and_exit_code():
     rows = [
         Row(
-            repo="a", path="/a",
-            cells={"project": Cell(VIOLATION, details=[{"id": "1", "message": "m"}])}
+            repo="a",
+            path="/a",
+            cells={"project": Cell(VIOLATION, details=[{"id": "1", "message": "m"}])},
         ),
     ]
     machine_cell = Cell(PASS)
@@ -201,10 +222,20 @@ def test_build_report_missing_standard_falls_back_to_na():
 
 # --- render_digest ---
 
+
 def _all_pass_rows():
-    return [Row(repo="a", path="/a", cells={
-        "project": Cell(PASS), "security": Cell(PASS), "code": Cell(PASS), "infra": Cell(NA),
-    })]
+    return [
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(PASS),
+                "code": Cell(PASS),
+                "infra": Cell(NA),
+            },
+        )
+    ]
 
 
 def test_render_digest_all_pass_omits_violations_section():
@@ -226,12 +257,18 @@ def test_render_digest_all_pass_omits_violations_section():
 
 
 def test_render_digest_violation_row_and_section():
-    rows = [Row(repo="a", path="/a", cells={
-        "project": Cell(PASS),
-        "security": Cell(VIOLATION, details=[{"id": "42:abc", "message": "bad thing"}]),
-        "code": Cell(PASS),
-        "infra": Cell(NA),
-    })]
+    rows = [
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(VIOLATION, details=[{"id": "42:abc", "message": "bad thing"}]),
+                "code": Cell(PASS),
+                "infra": Cell(NA),
+            },
+        )
+    ]
     machine_cell = Cell(PASS)
     summary = {PASS: 3, VIOLATION: 1, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
     out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
@@ -242,15 +279,28 @@ def test_render_digest_violation_row_and_section():
 
 
 def test_render_digest_accepted_cell_symbol():
-    rows = [Row(repo="a", path="/a", cells={
-        "project": Cell(PASS),
-        "security": Cell(ACCEPTED, details=[{
-            "id": "42:abc", "message": "bad thing",
-            "accepted": True, "exception_reason": "glob covers it"
-        }]),
-        "code": Cell(PASS),
-        "infra": Cell(NA),
-    })]
+    rows = [
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(
+                    ACCEPTED,
+                    details=[
+                        {
+                            "id": "42:abc",
+                            "message": "bad thing",
+                            "accepted": True,
+                            "exception_reason": "glob covers it",
+                        }
+                    ],
+                ),
+                "code": Cell(PASS),
+                "infra": Cell(NA),
+            },
+        )
+    ]
     machine_cell = Cell(PASS)
     summary = {PASS: 3, VIOLATION: 0, ACCEPTED: 1, NA: 1, UNKNOWN: 0}
     out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
@@ -261,12 +311,18 @@ def test_render_digest_accepted_cell_symbol():
 
 
 def test_render_digest_unknown_cell_and_section():
-    rows = [Row(repo="a", path="/a", cells={
-        "project": Cell(PASS),
-        "security": Cell(UNKNOWN, note="tool not run"),
-        "code": Cell(PASS),
-        "infra": Cell(NA),
-    })]
+    rows = [
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(UNKNOWN, note="tool not run"),
+                "code": Cell(PASS),
+                "infra": Cell(NA),
+            },
+        )
+    ]
     machine_cell = Cell(PASS)
     summary = {PASS: 3, VIOLATION: 0, ACCEPTED: 0, NA: 1, UNKNOWN: 1}
     out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
@@ -297,13 +353,22 @@ def test_render_digest_machine_scope_line():
 
 # --- render_digest: violations vs advisories split (PASS-cell details) ---
 
+
 def test_render_digest_pass_cell_with_details_goes_to_advisories_not_violations():
-    rows = [Row(repo="a", path="/a", cells={
-        "project": Cell(PASS),
-        "security": Cell(PASS, details=[{"id": "warn:1", "message": "minor advisory finding"}]),
-        "code": Cell(PASS),
-        "infra": Cell(NA),
-    })]
+    rows = [
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(
+                    PASS, details=[{"id": "warn:1", "message": "minor advisory finding"}]
+                ),
+                "code": Cell(PASS),
+                "infra": Cell(NA),
+            },
+        )
+    ]
     machine_cell = Cell(PASS)
     summary = {PASS: 4, VIOLATION: 0, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
     out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
@@ -328,12 +393,18 @@ def test_render_digest_dedupes_duplicate_details_but_json_keeps_full_fidelity():
         {"id": "sec:1", "message": "duplicate finding"},
         {"id": "sec:1", "message": "duplicate finding"},
     ]
-    rows = [Row(repo="a", path="/a", cells={
-        "project": Cell(PASS),
-        "security": Cell(VIOLATION, details=list(dup_details)),
-        "code": Cell(PASS),
-        "infra": Cell(NA),
-    })]
+    rows = [
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(VIOLATION, details=list(dup_details)),
+                "code": Cell(PASS),
+                "infra": Cell(NA),
+            },
+        )
+    ]
     machine_cell = Cell(PASS)
     summary = {PASS: 3, VIOLATION: 1, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
     out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
@@ -344,12 +415,18 @@ def test_render_digest_dedupes_duplicate_details_but_json_keeps_full_fidelity():
 
 
 def test_render_digest_violation_cell_still_renders_under_violations():
-    rows = [Row(repo="a", path="/a", cells={
-        "project": Cell(PASS),
-        "security": Cell(VIOLATION, details=[{"id": "42:abc", "message": "bad thing"}]),
-        "code": Cell(PASS),
-        "infra": Cell(NA),
-    })]
+    rows = [
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(VIOLATION, details=[{"id": "42:abc", "message": "bad thing"}]),
+                "code": Cell(PASS),
+                "infra": Cell(NA),
+            },
+        )
+    ]
     machine_cell = Cell(PASS)
     summary = {PASS: 3, VIOLATION: 1, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
     out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")
@@ -363,8 +440,7 @@ def test_render_digest_violation_cell_still_renders_under_violations():
 
 
 def _exc(**over):
-    base = {"standard": "code", "finding": "code.*", "reason": "accepted",
-            "added": "2026-07-03"}
+    base = {"standard": "code", "finding": "code.*", "reason": "accepted", "added": "2026-07-03"}
     return {**base, **over}
 
 
@@ -387,39 +463,48 @@ def test_resolve_local_pass_unknown_na_pass_through():
 
 
 def test_resolve_local_masks_matching_violation():
-    result = CheckResult("code", VIOLATION,
-                         details=[{"id": "code.not-onboarded", "message": "m"}])
+    result = CheckResult("code", VIOLATION, details=[{"id": "code.not-onboarded", "message": "m"}])
     cell, used = resolve_cell_local(result, [_exc()], TODAY)
     assert cell.status == ACCEPTED and used == {0}
     assert cell.details[0]["exception_reason"] == "accepted"
 
 
 def test_resolve_local_expired_exception_does_not_mask():
-    result = CheckResult("code", VIOLATION,
-                         details=[{"id": "code.not-onboarded", "message": "m"}])
+    result = CheckResult("code", VIOLATION, details=[{"id": "code.not-onboarded", "message": "m"}])
     cell, used = resolve_cell_local(result, [_exc(review_by="2026-06-01")], TODAY)
     assert cell.status == VIOLATION
     assert cell.details[0]["exception_expired"] == "2026-06-01"
-    assert used == {0}          # matched (so not stale), just expired
+    assert used == {0}  # matched (so not stale), just expired
 
 
 def test_resolve_local_wrong_standard_does_not_mask():
-    result = CheckResult("security", VIOLATION,
-                         details=[{"id": "security.x", "message": "m"}])
+    result = CheckResult("security", VIOLATION, details=[{"id": "security.x", "message": "m"}])
     cell, used = resolve_cell_local(result, [_exc()], TODAY)
     assert cell.status == VIOLATION and used == set()
 
 
 def test_render_digest_violation_with_expired_exception_shows_suffix():
-    rows = [Row(repo="a", path="/a", cells={
-        "project": Cell(PASS),
-        "security": Cell(VIOLATION, details=[{
-            "id": "42:abc", "message": "expired exception",
-            "exception_expired": "2026-06-01"
-        }]),
-        "code": Cell(PASS),
-        "infra": Cell(NA),
-    })]
+    rows = [
+        Row(
+            repo="a",
+            path="/a",
+            cells={
+                "project": Cell(PASS),
+                "security": Cell(
+                    VIOLATION,
+                    details=[
+                        {
+                            "id": "42:abc",
+                            "message": "expired exception",
+                            "exception_expired": "2026-06-01",
+                        }
+                    ],
+                ),
+                "code": Cell(PASS),
+                "infra": Cell(NA),
+            },
+        )
+    ]
     machine_cell = Cell(PASS)
     summary = {PASS: 3, VIOLATION: 1, ACCEPTED: 0, NA: 1, UNKNOWN: 0}
     out = render_digest(rows, machine_cell, summary, [], generated="2026-07-02T00:00:00Z")

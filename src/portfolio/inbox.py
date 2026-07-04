@@ -1,8 +1,9 @@
 import hashlib
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 from . import config
+
 
 @dataclass
 class InboxItem:
@@ -15,14 +16,17 @@ class InboxItem:
     priority: str | None
     status: str  # "untriaged" | "triaged"
 
+
 def new_id(text: str, ts: str) -> str:
     return hashlib.sha256(f"{text}|{ts}".encode()).hexdigest()[:12]
+
 
 def append_inbox(item: InboxItem) -> None:
     path = config.inbox_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as f:
         f.write(json.dumps(asdict(item)) + "\n")
+
 
 def read_inbox() -> list[InboxItem]:
     path = config.inbox_path()
@@ -32,12 +36,13 @@ def read_inbox() -> list[InboxItem]:
     for line in path.read_text().splitlines():
         if not line.strip():
             continue
-        try:                                       # [debate-fix] isolate bad lines
+        try:  # [debate-fix] isolate bad lines
             d = json.loads(line)
-            items[d["id"]] = InboxItem(**d)        # later status updates win
+            items[d["id"]] = InboxItem(**d)  # later status updates win
         except (json.JSONDecodeError, TypeError, KeyError):
             continue
     return list(items.values())
+
 
 def mark_triaged(item_id: str) -> None:
     for item in read_inbox():

@@ -10,8 +10,14 @@ from portfolio.matrix import NA, PASS, VIOLATION, CheckResult
 NOW = datetime(2026, 7, 2, 12, 0, 0)
 
 
-def _manifest(applicable=None, foundation_flag=True, coolify=None, name="x",
-              required_checks=True, exceptions_fm=None):
+def _manifest(
+    applicable=None,
+    foundation_flag=True,
+    coolify=None,
+    name="x",
+    required_checks=True,
+    exceptions_fm=None,
+):
     lines = [
         "---",
         f"name: {name}",
@@ -49,8 +55,9 @@ def _manifest(applicable=None, foundation_flag=True, coolify=None, name="x",
 def _repo_files(applicable=None, required_checks=True, **manifest_kwargs):
     """PROJECT.md (+ a wired quality.yml workflow, so the mandatory `checks`
     column never turns an unrelated fixture into a surprise violation)."""
-    files = {"PROJECT.md": _manifest(applicable, required_checks=required_checks,
-                                     **manifest_kwargs)}
+    files = {
+        "PROJECT.md": _manifest(applicable, required_checks=required_checks, **manifest_kwargs)
+    }
     if required_checks:
         files[".github/workflows/quality.yml"] = "jobs:\n  quality: {}\n"
     return files
@@ -61,7 +68,8 @@ def _stub_governance_pass(monkeypatch):
 
 
 def test_single_foundational_repo_only_project_applicable(
-        monkeypatch, make_repo, portfolio_env, standards_env):
+    monkeypatch, make_repo, portfolio_env, standards_env
+):
     _stub_governance_pass(monkeypatch)
     make_repo("a", files=_repo_files(["project"], name="a"))
     make_repo("b", files={"PROJECT.md": _manifest(None, foundation_flag=False, name="b")})
@@ -84,12 +92,14 @@ def test_single_foundational_repo_only_project_applicable(
 
 
 def test_security_violation_drives_exit_code_1(
-        monkeypatch, make_repo, portfolio_env, standards_env):
+    monkeypatch, make_repo, portfolio_env, standards_env
+):
     _stub_governance_pass(monkeypatch)
 
     def fake_check_security(repo):
-        return CheckResult("security", VIOLATION,
-                            details=[{"id": "security.101:abc", "message": "bad thing"}])
+        return CheckResult(
+            "security", VIOLATION, details=[{"id": "security.101:abc", "message": "bad thing"}]
+        )
 
     monkeypatch.setattr(checkers, "check_security", fake_check_security)
     make_repo("x", files=_repo_files(["project", "security"]))
@@ -102,7 +112,8 @@ def test_security_violation_drives_exit_code_1(
 
 
 def test_frontmatter_exception_covers_violation_and_stale_entry_reported(
-        monkeypatch, make_repo, portfolio_env, standards_env):
+    monkeypatch, make_repo, portfolio_env, standards_env
+):
     """Repo-scoped exceptions now live in the repo's own PROJECT.md frontmatter
     (WS-1.3) — the central foundation-exceptions.toml only ever resolves the
     `_machine` governance scope. An entry that never matches shows up in the
@@ -110,19 +121,31 @@ def test_frontmatter_exception_covers_violation_and_stale_entry_reported(
     _stub_governance_pass(monkeypatch)
 
     def fake_check_security(repo):
-        return CheckResult("security", VIOLATION,
-                            details=[{"id": "security.101:abc", "message": "bad thing"}])
+        return CheckResult(
+            "security", VIOLATION, details=[{"id": "security.101:abc", "message": "bad thing"}]
+        )
 
     monkeypatch.setattr(checkers, "check_security", fake_check_security)
-    make_repo("x", files=_repo_files(
-        ["project", "security"],
-        exceptions_fm=[
-            {"standard": "security", "finding": "security.101:*",
-             "reason": "known false positive", "added": "2026-07-01"},
-            {"standard": "security", "finding": "security.999:*",
-             "reason": "never matched", "added": "2026-07-01"},
-        ],
-    ))
+    repo = make_repo(
+        "x",
+        files=_repo_files(
+            ["project", "security"],
+            exceptions_fm=[
+                {
+                    "standard": "security",
+                    "finding": "security.101:*",
+                    "reason": "known false positive",
+                    "added": "2026-07-01",
+                },
+                {
+                    "standard": "security",
+                    "finding": "security.999:*",
+                    "reason": "never matched",
+                    "added": "2026-07-01",
+                },
+            ],
+        ),
+    )
 
     report = run_foundation(roots=[portfolio_env.parent], now=NOW)
 
@@ -130,16 +153,21 @@ def test_frontmatter_exception_covers_violation_and_stale_entry_reported(
     assert row["cells"]["security"]["status"] == "accepted-exception"
     assert report["exit_code"] == 0
     assert report["unused_exceptions"] == []
-    assert [e["reason"] for e in report["stale_repo_exceptions"]["x"]] == ["never matched"]
+    assert [e["reason"] for e in report["stale_repo_exceptions"][str(repo.resolve())]] == [
+        "never matched"
+    ]
 
 
 def test_infra_batch_wiring_and_resolve(monkeypatch, make_repo, portfolio_env, standards_env):
     _stub_governance_pass(monkeypatch)
 
     def fake_check_infra(repo_resources, now):
-        assert repo_resources == {"x": ["x"]}
-        return {"x": CheckResult("infra", VIOLATION,
-                                  details=[{"id": "572:aaa", "message": "drift"}])}
+        assert len(repo_resources) == 1
+        path = next(iter(repo_resources))
+        assert repo_resources[path] == ["x"]
+        return {
+            path: CheckResult("infra", VIOLATION, details=[{"id": "572:aaa", "message": "drift"}])
+        }
 
     monkeypatch.setattr(checkers, "check_infra", fake_check_infra)
     make_repo("x", files=_repo_files(["project", "infra"], coolify=["x"]))
@@ -152,20 +180,34 @@ def test_infra_batch_wiring_and_resolve(monkeypatch, make_repo, portfolio_env, s
 
 
 def test_infra_frontmatter_exception_used_not_reported_as_stale(
-        monkeypatch, make_repo, portfolio_env, standards_env):
+    monkeypatch, make_repo, portfolio_env, standards_env
+):
     _stub_governance_pass(monkeypatch)
 
     def fake_check_infra(repo_resources, now):
-        assert repo_resources == {"x": ["x"]}
-        return {"x": CheckResult("infra", VIOLATION,
-                                  details=[{"id": "572:abc", "message": "drift"}])}
+        assert len(repo_resources) == 1
+        path = next(iter(repo_resources))
+        assert repo_resources[path] == ["x"]
+        return {
+            path: CheckResult("infra", VIOLATION, details=[{"id": "572:abc", "message": "drift"}])
+        }
 
     monkeypatch.setattr(checkers, "check_infra", fake_check_infra)
-    make_repo("x", files=_repo_files(
-        ["project", "infra"], coolify=["x"],
-        exceptions_fm=[{"standard": "infra", "finding": "572:*",
-                        "reason": "known infra drift", "added": "2026-07-01"}],
-    ))
+    make_repo(
+        "x",
+        files=_repo_files(
+            ["project", "infra"],
+            coolify=["x"],
+            exceptions_fm=[
+                {
+                    "standard": "infra",
+                    "finding": "572:*",
+                    "reason": "known infra drift",
+                    "added": "2026-07-01",
+                }
+            ],
+        ),
+    )
 
     report = run_foundation(roots=[portfolio_env.parent], now=NOW)
 
@@ -183,8 +225,7 @@ def test_no_foundational_repos_raises(monkeypatch, make_repo, portfolio_env, sta
         run_foundation(roots=[portfolio_env.parent], now=NOW)
 
 
-def test_malformed_exceptions_file_propagates(
-        monkeypatch, portfolio_env, tmp_path, standards_env):
+def test_malformed_exceptions_file_propagates(monkeypatch, portfolio_env, tmp_path, standards_env):
     bad_path = tmp_path / "bad-exceptions.toml"
     bad_path.write_bytes(b"\x00\x01 not = valid [[[ toml")
     monkeypatch.setenv("FOUNDATION_EXCEPTIONS", str(bad_path))
@@ -193,7 +234,7 @@ def test_malformed_exceptions_file_propagates(
         run_foundation(roots=[portfolio_env.parent], now=NOW)
 
 
-_FAKE_CLI = '''
+_FAKE_CLI = """
 import json
 import sys
 
@@ -220,11 +261,12 @@ def main():
 
 if __name__ == "__main__":
     main()
-'''
+"""
 
 
 def test_integration_real_subprocess_security_path(
-        monkeypatch, make_repo, portfolio_env, tmp_path, standards_env):
+    monkeypatch, make_repo, portfolio_env, tmp_path, standards_env
+):
     _stub_governance_pass(monkeypatch)
 
     fake_security_repo = tmp_path / "fake-security-standards"
@@ -244,23 +286,30 @@ def test_integration_real_subprocess_security_path(
 
 
 def test_standard_version_bump_shows_drift_in_consumer(
-        monkeypatch, make_repo, portfolio_env, standards_env):
-    repo = make_repo("consumer", files={"PROJECT.md": (
-        "---\nname: consumer\ntier: active\nstatus: active\nversion: 1.0\n"
-        "version_source: none\npurpose: p\nupdated: '2026-07-03'\n"
-        "foundation: true\nfoundation_contract: 1\n"
-        "applicable_standards:\n  project: '1.0'\n"
-        "required_checks:\n- id: quality\n  executor: github-actions:quality.yml\n"
-        "---\n\n## Backlog\n")})
+    monkeypatch, make_repo, portfolio_env, standards_env
+):
+    repo = make_repo(
+        "consumer",
+        files={
+            "PROJECT.md": (
+                "---\nname: consumer\ntier: active\nstatus: active\nversion: 1.0\n"
+                "version_source: none\npurpose: p\nupdated: '2026-07-03'\n"
+                "foundation: true\nfoundation_contract: 1\n"
+                "applicable_standards:\n  project: '1.0'\n"
+                "required_checks:\n- id: quality\n  executor: github-actions:quality.yml\n"
+                "---\n\n## Backlog\n"
+            )
+        },
+    )
     wf = repo / ".github" / "workflows" / "quality.yml"
     wf.parent.mkdir(parents=True)
     wf.write_text("jobs:\n  quality: {}\n")
     monkeypatch.setattr(
-        "portfolio.compliance.checkers.check_project",
-        lambda r: CheckResult("project", PASS))
+        "portfolio.compliance.checkers.check_project", lambda r: CheckResult("project", PASS)
+    )
     monkeypatch.setattr(
-        "portfolio.checkers.check_governance",
-        lambda: CheckResult("governance", PASS))
+        "portfolio.checkers.check_governance", lambda: CheckResult("governance", PASS)
+    )
 
     report = run_foundation(roots=[repo.parent])
     cell = report["repos"][0]["cells"]["project"]

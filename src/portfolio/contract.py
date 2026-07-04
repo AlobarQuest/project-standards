@@ -1,4 +1,5 @@
 """Parse the foundation_contract block from PROJECT.md frontmatter."""
+
 from dataclasses import dataclass, field
 
 from . import config, exceptions
@@ -10,12 +11,12 @@ VERSIONED_STANDARDS = ("project", "code", "security")
 
 @dataclass
 class Contract:
-    fatal: str | None = None      # unrecognized schema marker — treat all cells unknown
-    declared: bool = False        # applicable_standards present, valid, non-empty
-    standards: dict = field(default_factory=dict)       # std -> pin (str | None)
+    fatal: str | None = None  # unrecognized schema marker — treat all cells unknown
+    declared: bool = False  # applicable_standards present, valid, non-empty
+    standards: dict = field(default_factory=dict)  # std -> pin (str | None)
     required_checks: list = field(default_factory=list)  # raw entries; wiring validates
-    exceptions: list = field(default_factory=list)       # validated entries (Task 2)
-    errors: list = field(default_factory=list)           # shape problems (never mask)
+    exceptions: list = field(default_factory=list)  # validated entries (Task 2)
+    errors: list = field(default_factory=list)  # shape problems (never mask)
 
 
 def _parse_standards(fm: dict, c: Contract) -> None:
@@ -26,8 +27,11 @@ def _parse_standards(fm: dict, c: Contract) -> None:
         elif raw:
             c.errors.append(f"applicable_standards list items must be strings: {raw!r}")
     elif isinstance(raw, dict):
-        bad = {k: v for k, v in raw.items()
-               if not isinstance(k, str) or not (v is None or isinstance(v, str))}
+        bad = {
+            k: v
+            for k, v in raw.items()
+            if not isinstance(k, str) or not (v is None or isinstance(v, str))
+        }
         if bad:
             c.errors.append(f"applicable_standards pins must be str or null: {bad!r}")
         elif raw:

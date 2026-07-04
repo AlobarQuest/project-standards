@@ -26,6 +26,6 @@ required_checks:
 - [x] (P1) Foundation conformance matrix — census keys, checker adapters, portfolio foundation CLI — added 2026-07-02 Plan: docs/superpowers/plans/2026-07-02-foundation-conformance-matrix.md
 
 - [ ] (P2) CI guard: STANDARD_VERSION must be bumped when the standard's rules change in a diff (WS-1.3 follow-up; without it versioning rusts silently) — added 2026-07-03
-- [ ] (P3) compliance rows key by repo basename — two same-named repos under different roots (~/Projects/x vs ~/Developer/x) would cross-assign infra cells and stale-exception attribution; key by path — added 2026-07-03
-- [ ] (P3) Burn down the full-repo ruff baseline (166 errors, red on main) or make make check baseline-aware — the CLAUDE.md 'make check must be green' gate is currently untruthful; enforced gate today is diff-scoped only — added 2026-07-03
+- [x] (P3) Compliance bookkeeping now keys infra results, exception usage, and stale-exception attribution by resolved repository path; duplicate basenames under different roots cannot cross-assign state. — added 2026-07-03; resolved 2026-07-04
+- [x] (P3) Burned the full-repo ruff debt to zero, formatted the repository, made pyright's Python version/source scope deterministic, and fixed the source type errors it exposed. Five intentionally complex boundary functions carry explicit local `C901` annotations rather than a hidden global baseline; test fixture lines ignore E501 only. Full `make check`: ruff + format + pyright clean, 227 tests pass. — added 2026-07-03; resolved 2026-07-04
 ## Future plans
