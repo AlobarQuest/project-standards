@@ -36,15 +36,15 @@ def run_foundation(roots=None, now=None) -> dict:
 
     governance_result = checkers.check_governance()
     machine_cell, used = resolve_cell(governance_result, machine_exc, MACHINE)
-    unused_exceptions = [entry for idx, entry in enumerate(machine_exc)
-                         if idx not in used]
+    unused_exceptions = [entry for idx, entry in enumerate(machine_exc) if idx not in used]
 
     summary = summarize(rows, machine_cell)
     generated = now.isoformat(timespec="seconds")
     report = build_report(rows, machine_cell, summary, unused_exceptions, generated)
     report["stale_repo_exceptions"] = stale_repo_exceptions
-    digest = render_digest(rows, machine_cell, summary, unused_exceptions, generated,
-                           stale_repo_exceptions)
+    digest = render_digest(
+        rows, machine_cell, summary, unused_exceptions, generated, stale_repo_exceptions
+    )
 
     home = config.portfolio_home()
     home.mkdir(parents=True, exist_ok=True)

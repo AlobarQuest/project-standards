@@ -3,19 +3,20 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import config
-from .matrix import CheckResult, PASS, VIOLATION, UNKNOWN
+from .matrix import PASS, UNKNOWN, VIOLATION, CheckResult
 from .validator import lint
 
 
 def _run(cmd, cwd=None, env=None, timeout=None):
     timeout = timeout or config.checker_timeout()
     try:
-        return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True,
-                               text=True, timeout=timeout)
+        return subprocess.run(
+            cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout
+        )
     except (subprocess.SubprocessError, OSError):
         return None
 
@@ -62,7 +63,10 @@ def check_security(repo: Path) -> CheckResult:
 
 
 def _code_cmd() -> list[str]:
-    return ["uv", "run", "code-standards", "check"]
+    installed = config.code_standards_repo() / ".venv" / "bin" / "code-standards"
+    if installed.is_file():
+        return [str(installed), "check"]
+    return ["uv", "run", "--project", str(config.code_standards_repo()), "code-standards", "check"]
 
 
 def _code_detail(line: str) -> dict:
@@ -78,7 +82,9 @@ def check_code(repo: Path) -> CheckResult:
         return CheckResult("code", VIOLATION, details=details)
 
     cmd = _code_cmd() + ["--repo", str(repo)]
-    result = _run(cmd, cwd=config.code_standards_repo())
+    # Run from the target repository so language tools resolve its project
+    # environment, while `--project` selects the code-standards CLI itself.
+    result = _run(cmd, cwd=repo)
     if result is None:
         return CheckResult("code", UNKNOWN, note="code-standards unavailable")
 
@@ -115,7 +121,11 @@ def check_governance() -> CheckResult:
 
     stderr_lines = result.stderr.splitlines()
     first_line = stderr_lines[0] if stderr_lines else ""
-    return CheckResult("governance", UNKNOWN, note=f"governance verifier failed with rc {result.returncode}: {first_line}".rstrip())
+    return CheckResult(
+        "governance",
+        UNKNOWN,
+        note=f"governance verifier failed with rc {result.returncode}: {first_line}".rstrip(),
+    )
 
 
 _INFRA_REPORT_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json$")
@@ -124,14 +134,21 @@ _INFRA_REPORT_NAME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json$")
 def _latest_infra_report(report_dir: Path) -> Path | None:
     if not report_dir.is_dir():
         return None
-    candidates = [p for p in report_dir.iterdir() if p.is_file() and _INFRA_REPORT_NAME_RE.match(p.name)]
+    candidates = [
+        p for p in report_dir.iterdir() if p.is_file() and _INFRA_REPORT_NAME_RE.match(p.name)
+    ]
     if not candidates:
         return None
     return max(candidates, key=lambda p: p.name)
 
 
 def _infra_proposal_message(proposal: dict) -> str:
-    return proposal.get("description") or proposal.get("summary") or proposal.get("id") or "(no description)"
+    return (
+        proposal.get("description")
+        or proposal.get("summary")
+        or proposal.get("id")
+        or "(no description)"
+    )
 
 
 def _infra_instance_unusable(inst) -> bool:
@@ -147,7 +164,9 @@ def _all_infra_unknown(repo_resources: dict[str, list[str]], note: str) -> dict[
     return {repo: CheckResult("infra", UNKNOWN, note=note) for repo in repo_resources}
 
 
-def check_infra(repo_resources: dict[str, list[str]], now: datetime) -> dict[str, CheckResult]:
+def check_infra(  # noqa: C901
+    repo_resources: dict[str, list[str]], now: datetime
+) -> dict[str, CheckResult]:
     report_dir = config.infra_report_dir()
     report_path = _latest_infra_report(report_dir)
     if report_path is None:
@@ -172,7 +191,7 @@ def check_infra(repo_resources: dict[str, list[str]], now: datetime) -> dict[str
 
     # Judgment call: a naive datetime (now or generated_at) is treated as system-local time.
     now_aware = now.astimezone() if now.tzinfo is None else now
-    age_hours = (now_aware.astimezone(timezone.utc) - generated_at.astimezone(timezone.utc)).total_seconds() / 3600
+    age_hours = (now_aware.astimezone(UTC) - generated_at.astimezone(UTC)).total_seconds() / 3600
     if age_hours > config.infra_max_age_hours():
         return _all_infra_unknown(repo_resources, f"infra report stale: {report_path.name}")
 
@@ -192,7 +211,9 @@ def check_infra(repo_resources: dict[str, list[str]], now: datetime) -> dict[str
     for repo, resources in repo_resources.items():
         if not resources:
             results[repo] = CheckResult(
-                "infra", UNKNOWN, note="infra declared applicable but no coolify_resources in frontmatter"
+                "infra",
+                UNKNOWN,
+                note="infra declared applicable but no coolify_resources in frontmatter",
             )
             continue
 

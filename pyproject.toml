@@ -11,6 +11,13 @@ dependencies = ["PyYAML>=6.0"]
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "ruff==0.15.20",
+  "pyright==1.1.411",
+]
+
 [project.scripts]
 portfolio = "portfolio.cli:main"
 
@@ -28,8 +35,16 @@ select = ["E", "F", "I", "UP", "B", "C90"]
 max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["B", "C90"]
+"tests/**" = ["B", "C90", "E501"]
 
 [tool.pyright]
 typeCheckingMode = "basic"
-exclude = ["**/node_modules", "**/__pycache__", "**/.*", "**/alembic", "**/migrations"]
+pythonVersion = "3.12"
+exclude = [
+  "**/node_modules",
+  "**/__pycache__",
+  "**/.*",
+  "**/alembic",
+  "**/migrations",
+  "tests",
+]

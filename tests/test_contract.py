@@ -33,28 +33,24 @@ def test_bad_types_are_errors_not_crashes():
 
 
 def test_future_contract_marker_is_fatal():
-    c = parse_contract({"foundation_contract": 2,
-                        "applicable_standards": {"project": "1.0"}})
+    c = parse_contract({"foundation_contract": 2, "applicable_standards": {"project": "1.0"}})
     assert c.fatal is not None
     assert not c.declared
 
 
 def test_contract_marker_1_is_accepted():
-    c = parse_contract({"foundation_contract": 1,
-                        "applicable_standards": {"project": "1.0"}})
+    c = parse_contract({"foundation_contract": 1, "applicable_standards": {"project": "1.0"}})
     assert c.fatal is None and c.declared
 
 
 def test_required_checks_passthrough():
     entries = [{"id": "quality", "executor": "github-actions:quality.yml"}]
-    c = parse_contract({"applicable_standards": {"project": "1.0"},
-                        "required_checks": entries})
+    c = parse_contract({"applicable_standards": {"project": "1.0"}, "required_checks": entries})
     assert c.required_checks == entries
 
 
 def test_required_checks_non_list_is_error():
-    c = parse_contract({"applicable_standards": {"project": "1.0"},
-                        "required_checks": "quality"})
+    c = parse_contract({"applicable_standards": {"project": "1.0"}, "required_checks": "quality"})
     assert c.required_checks == [] and c.errors
 
 
@@ -68,23 +64,22 @@ def test_current_versions_reads_files(monkeypatch, tmp_path):
     monkeypatch.setenv("PROJECT_STANDARDS_REPO", str(tmp_path / "project"))
     monkeypatch.setenv("CODE_STANDARDS_REPO", str(tmp_path / "code"))
     monkeypatch.setenv("SECURITY_STANDARDS_REPO", str(tmp_path / "security"))
-    assert current_standard_versions() == {"project": "1.0", "code": "2.1",
-                                           "security": None}
+    assert current_standard_versions() == {"project": "1.0", "code": "2.1", "security": None}
 
 
 def test_contract_validates_exceptions_and_drops_invalid():
-    fm = {"applicable_standards": {"code": "1.0"},
-          "exceptions": [
-              {"standard": "code", "finding": "code.*", "reason": "r",
-               "added": "2026-07-03"},
-              {"standard": "code"},          # invalid -> dropped + error
-          ]}
+    fm = {
+        "applicable_standards": {"code": "1.0"},
+        "exceptions": [
+            {"standard": "code", "finding": "code.*", "reason": "r", "added": "2026-07-03"},
+            {"standard": "code"},  # invalid -> dropped + error
+        ],
+    }
     c = parse_contract(fm)
     assert len(c.exceptions) == 1
     assert c.errors
 
 
 def test_exceptions_falsy_non_list_is_error():
-    c = parse_contract({"applicable_standards": {"project": "1.0"},
-                        "exceptions": {}})
+    c = parse_contract({"applicable_standards": {"project": "1.0"}, "exceptions": {}})
     assert c.exceptions == [] and c.errors

@@ -3,46 +3,61 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+
 def detect_name(repo: Path) -> str:
     return repo.name
 
-def is_git(repo: Path) -> bool:
-    return (repo / ".git").exists()   # True for both .git dir and worktree .git file
 
-def detect_version(repo: Path) -> tuple[str, str]:
+def is_git(repo: Path) -> bool:
+    return (repo / ".git").exists()  # True for both .git dir and worktree .git file
+
+
+def detect_version(repo: Path) -> tuple[str, str]:  # noqa: C901
     pkg = repo / "package.json"
     if pkg.exists():
         try:
             parsed = json.loads(pkg.read_text())
             v = parsed.get("version") if isinstance(parsed, dict) else None
-            if v: return str(v), "package.json"
-        except (json.JSONDecodeError, OSError): pass
+            if v:
+                return str(v), "package.json"
+        except (json.JSONDecodeError, OSError):
+            pass
     pyproject = repo / "pyproject.toml"
     if pyproject.exists():
         try:
             data = tomllib.loads(pyproject.read_text())
-            v = data.get("project", {}).get("version") or data.get("tool", {}).get("poetry", {}).get("version")
-            if v: return str(v), "pyproject"
-        except (tomllib.TOMLDecodeError, OSError): pass
+            v = data.get("project", {}).get("version") or data.get("tool", {}).get(
+                "poetry", {}
+            ).get("version")
+            if v:
+                return str(v), "pyproject"
+        except (tomllib.TOMLDecodeError, OSError):
+            pass
     cargo = repo / "Cargo.toml"
     if cargo.exists():
         try:
             v = tomllib.loads(cargo.read_text()).get("package", {}).get("version")
-            if v: return str(v), "cargo"
-        except (tomllib.TOMLDecodeError, OSError): pass
+            if v:
+                return str(v), "cargo"
+        except (tomllib.TOMLDecodeError, OSError):
+            pass
     if is_git(repo):
         tag = _git(repo, ["describe", "--tags", "--abbrev=0"])
-        if tag: return tag, "git-tag"
+        if tag:
+            return tag, "git-tag"
     return "n/a", "none"
+
 
 def detect_remote(repo: Path) -> str | None:
     if not is_git(repo):
         return None
     return _git(repo, ["remote", "get-url", "origin"]) or None
 
+
 def detect_purpose(repo: Path) -> str | None:
     readme = repo / "README.md"
-    if not readme.exists(): return None
+    if not readme.exists():
+        return None
     try:
         lines = readme.read_text().splitlines()
     except OSError:
@@ -52,6 +67,7 @@ def detect_purpose(repo: Path) -> str | None:
         if s and not s.startswith(("#", "!", "[")):
             return s
     return None
+
 
 def _git(repo: Path, args: list[str]) -> str | None:
     try:
