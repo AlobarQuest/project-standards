@@ -40,6 +40,7 @@ max-complexity = 10
 [tool.pyright]
 typeCheckingMode = "basic"
 pythonVersion = "3.12"
+reportMissingModuleSource = "none"
 exclude = [
   "**/node_modules",
   "**/__pycache__",
