@@ -200,6 +200,10 @@ The command generates two artifacts:
 - **`~/.portfolio/FOUNDATION.md`** — Markdown digest: matrix table, Violations section, Accepted
   exceptions section, Unknown/work-items section, Stale exceptions hygiene.
 
+Operational invariant: the CLI prints only the compact summary. When the summary reports a
+violation or unknown cell, inspect `~/.portfolio/FOUNDATION.md` or `~/.portfolio/foundation.json`
+for the actual repo, standard, and finding details before changing code.
+
 **Census (frontmatter in each foundational repo's `PROJECT.md`):**
 
 - `foundation: true` (bool) — declares this repo as foundational
