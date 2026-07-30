@@ -12,6 +12,7 @@ instances without the network; UNKNOWN is admission-failing by design — a
 check that cannot see is never green.
 """
 
+import base64
 import json
 import re
 import sys
@@ -235,6 +236,149 @@ def check_profile_declared(repo: Path, registered_profiles: list[str] | None) ->
             remediation={"summary": "declare the repo's delivery profile in PROJECT.md"},
         )
     return _result("profile.declared", PASS)
+
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_USES_RE = re.compile(
+    r"uses:\s*AlobarQuest/factory-runner/\.github/workflows/factory-runner\.yml@(\S+)"
+)
+
+
+def _gh_contents(slug_path: str, gh, ref: str | None = None) -> str | None:
+    args = ["api", f"repos/{slug_path}" + (f"?ref={ref}" if ref else "")]
+    raw = gh(args)
+    if raw is None:
+        return None
+    try:
+        content = json.loads(raw)["content"]
+        return base64.b64decode(content).decode()
+    except (ValueError, KeyError):
+        return None
+
+
+def declared_pin(gh=_gh) -> str | None:
+    """The caller pin factory-runner declares in RECOMMENDED_CALLER_PIN."""
+    text = _gh_contents(f"{config.factory_runner_slug()}/contents/RECOMMENDED_CALLER_PIN", gh)
+    if text is None:
+        return None
+    pin = text.strip()
+    return pin if _SHA_RE.match(pin) else None
+
+
+def required_secrets(sha: str, gh=_gh) -> set[str] | None:
+    """Secret names the reusable workflow requires, read AT the declared SHA —
+    never hard-coded (the stale doc template passed 2 of 4)."""
+    text = _gh_contents(
+        f"{config.factory_runner_slug()}/contents/.github/workflows/factory-runner.yml",
+        gh,
+        ref=sha,
+    )
+    if text is None:
+        return None
+    match = re.search(r"workflow_call:.*?secrets:\n(.*?)\n\S", text, re.DOTALL)
+    block = match.group(1) if match else ""
+    names = {
+        line.strip().rstrip(":")
+        for line in block.splitlines()
+        if line.strip().endswith(":") and line.strip().rstrip(":").isupper()
+    }
+    return names or None
+
+
+def check_runner_caller(repo: Path, slug: str, gh=_gh) -> dict:
+    caller = repo / ".github" / "workflows" / "factory-runner-pilot.yml"
+    template = Path(__file__).parent / "templates" / "factory-runner-caller.yml"
+    if not caller.is_file():
+        return _result(
+            "runner.caller",
+            VIOLATION,
+            details=[{"id": "runner.no-caller", "message": "factory-runner-pilot.yml absent"}],
+            fix=(
+                f"copy {template} to {caller}, filling the pin from factory-runner's "
+                "RECOMMENDED_CALLER_PIN"
+            ),
+            remediation={"summary": "add the factory-runner caller workflow from the template"},
+        )
+    pin = declared_pin(gh=gh)
+    if pin is None:
+        return _result(
+            "runner.caller",
+            UNKNOWN,
+            details=[
+                {
+                    "id": "runner.declared-pin-unreachable",
+                    "message": "cannot read factory-runner RECOMMENDED_CALLER_PIN",
+                }
+            ],
+            fix="check gh auth / that factory-runner declares RECOMMENDED_CALLER_PIN",
+        )
+    match = _USES_RE.search(caller.read_text())
+    used = match.group(1) if match else None
+    if used is None or not _SHA_RE.match(used):
+        return _result(
+            "runner.caller",
+            VIOLATION,
+            details=[
+                {
+                    "id": "runner.unpinned",
+                    "message": f"caller uses @{used or '?'} — not a full SHA (GAP-4 class)",
+                }
+            ],
+            fix=f"pin the caller's uses: to @{pin} (factory-runner's declared pin)",
+            remediation={"summary": "SHA-pin the caller to the declared pin"},
+        )
+    if used != pin:
+        return _result(
+            "runner.caller",
+            VIOLATION,
+            details=[
+                {
+                    "id": "runner.behind-pin",
+                    "message": f"caller pin {used[:12]} != declared pin {pin[:12]}",
+                }
+            ],
+            fix=f"re-pin the caller's uses: to @{pin}",
+            remediation={"summary": "re-pin the caller to factory-runner's declared pin"},
+        )
+    needed = required_secrets(pin, gh=gh)
+    if needed is None:
+        return _result(
+            "runner.caller",
+            UNKNOWN,
+            details=[
+                {
+                    "id": "runner.secrets-unreadable",
+                    "message": "cannot read the reusable workflow's secrets block",
+                }
+            ],
+            fix="check gh auth and the declared pin, then re-run",
+        )
+    listing = gh(["secret", "list", "--repo", slug, "--json", "name"])
+    if listing is None:
+        return _result(
+            "runner.caller",
+            UNKNOWN,
+            details=[{"id": "runner.secrets-list-failed", "message": "gh secret list failed"}],
+            fix="check gh auth (secrets read needs admin), then re-run",
+        )
+    try:
+        have = {entry["name"] for entry in json.loads(listing)}
+    except (ValueError, TypeError, KeyError):
+        have = set()
+    missing = sorted(needed - have)
+    if missing:
+        return _result(
+            "runner.caller",
+            VIOLATION,
+            details=[
+                {
+                    "id": "runner.missing-secrets",
+                    "message": f"missing secrets: {', '.join(missing)}",
+                }
+            ],
+            fix=f"gh secret set {' / '.join(missing)} --repo {slug} (values piped from BWS)",
+        )
+    return _result("runner.caller", PASS)
 
 
 _COLLECTED_RE = re.compile(r"collected (\d+) items?")

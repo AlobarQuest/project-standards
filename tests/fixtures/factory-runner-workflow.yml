@@ -1,0 +1,142 @@
+name: Factory Runner
+
+'on':
+  workflow_dispatch:
+    inputs:
+      work_unit_id:
+        description: Approved orchestrator work-unit ID
+        required: true
+        type: string
+      orchestrator_url:
+        description: Orchestrator API URL
+        required: false
+        default: https://sds.alobar.net
+        type: string
+  workflow_call:
+    inputs:
+      work_unit_id:
+        required: true
+        type: string
+      orchestrator_url:
+        required: false
+        default: https://sds.alobar.net
+        type: string
+    secrets:
+      FACTORY_RUNNER_TOKEN:
+        required: true
+      FACTORY_RUNNER_CREDENTIAL_KEY_ID:
+        required: true
+      ANTHROPIC_API_KEY:
+        required: true
+      FACTORY_PR_TOKEN:
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+  checks: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ORCHESTRATOR_URL: ${{ inputs.orchestrator_url }}
+      WORK_UNIT_ID: ${{ inputs.work_unit_id }}
+      CURRENT_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: true
+          # PR-author identity so pushes/PRs trigger target-repo CI (not gated like GITHUB_TOKEN)
+          token: ${{ secrets.FACTORY_PR_TOKEN }}
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
+
+      - name: Install pinned factory runner
+        run: uv tool install "git+https://github.com/AlobarQuest/factory-runner.git@c266769fd9e9aecf4e35ced29ad1605656e84d87"
+
+      - name: Verify factory runner revision
+        run: factory-runner verify-install-revision --expected "c266769fd9e9aecf4e35ced29ad1605656e84d87"
+
+      - name: Prepare scoped run
+        id: prepare
+        env:
+          FACTORY_RUNNER_TOKEN: ${{ secrets.FACTORY_RUNNER_TOKEN }}
+          FACTORY_RUNNER_CREDENTIAL_KEY_ID: ${{ secrets.FACTORY_RUNNER_CREDENTIAL_KEY_ID }}
+        run: |
+          factory-runner prepare-run \
+            --orchestrator-url "$ORCHESTRATOR_URL" \
+            --credential-key-id "$FACTORY_RUNNER_CREDENTIAL_KEY_ID" \
+            --work-unit-id "$WORK_UNIT_ID" \
+            --current-repository "$CURRENT_REPOSITORY" \
+            --workspace-dir "$RUNNER_TEMP/factory-runner"
+
+      # `model` must be the action INPUT, not a step-level ANTHROPIC_MODEL env var.
+      # This is a composite action whose inner step sets
+      # `ANTHROPIC_MODEL: ${{ inputs.model || inputs.anthropic_model }}` — an inner
+      # step's env overrides the caller's, so a step-level ANTHROPIC_MODEL is clobbered
+      # with the empty input and the CLI silently falls back to its own default, the
+      # retired `claude-sonnet-4-20250514`.
+      - name: Run scoped coding action
+        id: coding
+        uses: anthropics/claude-code-base-action@e8132bc5e637a42c27763fc757faa37e1ee43b34
+        with:
+          model: claude-sonnet-5
+          prompt_file: ${{ steps.prepare.outputs.prompt_file }}
+          allowed_tools: ${{ steps.prepare.outputs.allowed_tools }}
+          settings: ${{ steps.prepare.outputs.settings_file }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The approved authority envelope carries budgets.max_llm_calls, which the
+          # runner does not yet read. Until it does, this literal is the effective
+          # budget. 10 exhausted itself on exploration and committed nothing.
+          max_turns: "40"
+
+      - name: Classify coding result
+        id: classify
+        if: steps.coding.outcome == 'success'
+        run: |
+          factory-runner classify-coding-result \
+            --execution-file "${{ steps.coding.outputs.execution_file }}"
+
+      # Only meaningful once prepare has claimed the unit. Without this guard an
+      # earlier failure runs finalize against an unclaimed unit, burying the real
+      # error under a second one.
+      - name: Finalize scoped run
+        id: finalize
+        if: steps.coding.outcome == 'success' && steps.classify.outcome == 'success'
+        env:
+          FACTORY_RUNNER_TOKEN: ${{ secrets.FACTORY_RUNNER_TOKEN }}
+          FACTORY_RUNNER_CREDENTIAL_KEY_ID: ${{ secrets.FACTORY_RUNNER_CREDENTIAL_KEY_ID }}
+          GITHUB_TOKEN: ${{ secrets.FACTORY_PR_TOKEN }}
+        run: |
+          factory-runner finalize-run \
+            --orchestrator-url "$ORCHESTRATOR_URL" \
+            --credential-key-id "$FACTORY_RUNNER_CREDENTIAL_KEY_ID" \
+            --work-unit-id "$WORK_UNIT_ID" \
+            --workspace-dir "$RUNNER_TEMP/factory-runner" \
+            --execution-file "${{ steps.coding.outputs.execution_file }}"
+
+      - name: Report failed scoped run
+        id: report_failure
+        if: >-
+          always() &&
+          steps.prepare.outcome == 'success' &&
+          (steps.coding.outcome == 'failure' || steps.classify.outcome == 'failure' || steps.finalize.outcome == 'failure')
+        env:
+          FACTORY_RUNNER_TOKEN: ${{ secrets.FACTORY_RUNNER_TOKEN }}
+          FACTORY_RUNNER_CREDENTIAL_KEY_ID: ${{ secrets.FACTORY_RUNNER_CREDENTIAL_KEY_ID }}
+        run: |
+          if [[ "${{ steps.finalize.outcome }}" == "failure" ]]; then
+            reason="finalization_failed"
+          else
+            reason="coding_action_failed"
+          fi
+          factory-runner fail-run \
+            --orchestrator-url "$ORCHESTRATOR_URL" \
+            --credential-key-id "$FACTORY_RUNNER_CREDENTIAL_KEY_ID" \
+            --work-unit-id "$WORK_UNIT_ID" \
+            --workspace-dir "$RUNNER_TEMP/factory-runner" \
+            --reason "$reason" \
+            --execution-file "${{ steps.coding.outputs.execution_file }}"
