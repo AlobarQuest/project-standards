@@ -14,9 +14,13 @@ check that cannot see is never green.
 
 import json
 import re
+import sys
+import tomllib
 from pathlib import Path
 
-from .checkers import _run
+from . import config
+from .checkers import _run, check_security
+from .manifest import parse_frontmatter
 from .matrix import PASS, UNKNOWN, VIOLATION
 
 
@@ -79,6 +83,158 @@ def check_code_onboarded(repo: Path) -> dict:
             remediation={"summary": "onboard the repo to code-standards (init + sync)"},
         )
     return _result("code.onboarded", PASS)
+
+
+_UUID_PROBE = (
+    "import sys; from pathlib import Path; from security_scan import manifest; "
+    "print(len(manifest.referenced_uuids(Path(sys.argv[1]))))"
+)
+
+
+def _referenced_uuid_count(repo: Path) -> int | None:
+    result = _run(
+        [sys.executable, "-c", _UUID_PROBE, str(repo)],
+        env={"PYTHONPATH": str(config.security_standards_src())},
+    )
+    if result is None or result.returncode != 0:
+        return None
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return None
+
+
+def _governance_registered(repo: Path) -> bool | None:
+    map_path = config.security_standards_repo() / "governance-map.toml"
+    try:
+        parsed = tomllib.loads(map_path.read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    for entry in parsed.get("repo", []):
+        if entry.get("name") == repo.name or Path(str(entry.get("path", ""))).name == repo.name:
+            return True
+    return False
+
+
+def check_security_clean(repo: Path) -> dict:
+    base = check_security(repo)
+    if base.status != PASS:
+        status = VIOLATION if base.status == VIOLATION else UNKNOWN
+        return _result(
+            "security.clean",
+            status,
+            details=base.details or [{"id": "security.unavailable", "message": base.note or ""}],
+            fix=(
+                f"PYTHONPATH={config.security_standards_src()} {sys.executable} -m "
+                f"security_scan.cli {repo} --category security — remediate every BLOCK"
+            ),
+            remediation={"summary": "clear the security scanner's BLOCK findings"}
+            if base.status == VIOLATION
+            else None,
+        )
+    referenced = _referenced_uuid_count(repo)
+    if referenced is None:
+        return _result(
+            "security.clean",
+            UNKNOWN,
+            details=[
+                {"id": "security.bws-probe-failed", "message": "referenced_uuids probe failed"}
+            ],
+            fix="check SECURITY_STANDARDS_REPO points at a security-standards checkout",
+        )
+    if referenced == 0:
+        return _result("security.clean", PASS)
+    problems = []
+    if not (repo / ".bws-secrets.toml").is_file():
+        problems.append(
+            {
+                "id": "security.no-bws-manifest",
+                "message": f"{referenced} BWS UUID reference(s) but no .bws-secrets.toml",
+                "fix": (
+                    f"PYTHONPATH={config.security_standards_src()} {sys.executable} -m "
+                    f"security_scan.genmanifest {repo} --write"
+                ),
+            }
+        )
+    registered = _governance_registered(repo)
+    if registered is None:
+        return _result(
+            "security.clean",
+            UNKNOWN,
+            details=[
+                {"id": "security.map-unreadable", "message": "governance-map.toml unreadable"}
+            ],
+            fix="check the security-standards checkout",
+        )
+    if not registered:
+        problems.append(
+            {
+                "id": "security.not-in-governance-map",
+                "message": "BWS-consuming repo has no [[repo]] entry in governance-map.toml",
+                "fix": (
+                    "add a [[repo]] consumer entry for this repo to security-standards "
+                    "governance-map.toml, then make ownership"
+                ),
+            }
+        )
+    if problems:
+        return _result(
+            "security.clean",
+            VIOLATION,
+            details=[{"id": p["id"], "message": p["message"]} for p in problems],
+            fix="; ".join(p["fix"] for p in problems),
+            remediation={"summary": "register the repo's BWS consumption (manifest + map entry)"},
+        )
+    return _result("security.clean", PASS)
+
+
+def registered_profiles() -> list[str] | None:
+    """Registered delivery-profile names, read from intent-packages by pointer."""
+    result = _run(
+        [
+            "uv",
+            "run",
+            "--project",
+            str(config.intent_packages_dir()),
+            "python",
+            "-c",
+            "from intent_packages.profiles import PROFILES; print('\\n'.join(sorted(PROFILES)))",
+        ]
+    )
+    if result is None or result.returncode != 0:
+        return None
+    names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return names or None
+
+
+def check_profile_declared(repo: Path, registered_profiles: list[str] | None) -> dict:
+    if registered_profiles is None:
+        return _result(
+            "profile.declared",
+            UNKNOWN,
+            details=[
+                {"id": "profile.registry-unavailable", "message": "cannot read PROFILES registry"}
+            ],
+            fix="check INTENT_PACKAGES_DIR points at an intent-packages checkout",
+        )
+    manifest_path = repo / "PROJECT.md"
+    declared = None
+    if manifest_path.is_file():
+        frontmatter, _ = parse_frontmatter(manifest_path.read_text())
+        declared = frontmatter.get("delivery_profile")
+    if declared not in registered_profiles:
+        seen = "absent" if declared is None else f"{declared!r} (not registered)"
+        return _result(
+            "profile.declared",
+            VIOLATION,
+            details=[{"id": "profile.not-declared", "message": f"delivery_profile {seen}"}],
+            fix=(
+                "declare `delivery_profile: <name>` in PROJECT.md frontmatter; registered: "
+                + ", ".join(registered_profiles)
+            ),
+            remediation={"summary": "declare the repo's delivery profile in PROJECT.md"},
+        )
+    return _result("profile.declared", PASS)
 
 
 _COLLECTED_RE = re.compile(r"collected (\d+) items?")
