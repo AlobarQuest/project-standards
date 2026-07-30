@@ -107,6 +107,22 @@ def test_ci_executed_no_runs_is_unknown(tmp_path):
     assert result["status"] == "unknown"
 
 
+def test_ci_executed_accepts_quiet_mode_passed_line(tmp_path):
+    """pytest -q never prints 'collected N items' — 'N passed' is equally
+    strong execution evidence (found live: change-manager, 105 passed)."""
+    repo = _repo(tmp_path, ONBOARDED)
+    gh = _fake_gh(run_list=RUN_OK, log="...\n105 passed in 2.51s\n")
+    result = check_ci_executed(repo, gh=gh)
+    assert result["status"] == "pass"
+    assert any("105" in d["message"] for d in result["details"])
+
+
+def test_ci_executed_no_tests_ran_quiet_mode_fires(tmp_path):
+    repo = _repo(tmp_path, ONBOARDED)
+    gh = _fake_gh(run_list=RUN_OK, log="no tests ran in 0.01s\n")
+    assert check_ci_executed(repo, gh=gh)["status"] == "violation"
+
+
 def test_ci_executed_in_progress_run_is_unknown_not_violation(tmp_path):
     repo = _repo(tmp_path, ONBOARDED)
     gh = _fake_gh(run_list=json.dumps([{"databaseId": 42, "conclusion": None}]))

@@ -462,6 +462,7 @@ def check_runner_caller(repo: Path, slug: str, gh=_gh) -> dict:
 
 
 _COLLECTED_RE = re.compile(r"collected (\d+) items?")
+_PASSED_RE = re.compile(r"(\d+) passed")
 
 
 def check_ci_executed(repo: Path, gh=_gh) -> dict:
@@ -541,9 +542,13 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
             details=[{"id": "ci.log-unreadable", "message": "gh run view --log failed"}],
             fix="check gh auth and network, then re-run",
         )
-    match = _COLLECTED_RE.search(log)
+    match = _COLLECTED_RE.search(log) or _PASSED_RE.search(log)
     if match is None or int(match.group(1)) == 0:
-        found = "no 'collected N items' line" if match is None else "collected 0 items"
+        found = (
+            "neither 'collected N items' nor 'N passed' in the log"
+            if match is None
+            else "a zero test count"
+        )
         return _result(
             "ci.executed",
             VIOLATION,
@@ -558,7 +563,7 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
     return _result(
         "ci.executed",
         PASS,
-        details=[{"id": "ci.collected", "message": f"collected {match.group(1)} items"}],
+        details=[{"id": "ci.collected", "message": f"{match.group(1)} tests evidenced in the log"}],
     )
 
 
