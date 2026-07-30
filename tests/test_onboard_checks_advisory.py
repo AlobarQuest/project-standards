@@ -27,18 +27,16 @@ def _gh_protection(payload):
     return gh
 
 
-def test_protection_absent_fires_report_only(make_repo):
-    repo = make_repo("x")
-    result = check_protection(repo, "AlobarQuest/x", gh=_gh_protection(None))
+def test_protection_absent_fires_report_only():
+    result = check_protection("AlobarQuest/x", gh=_gh_protection(None))
     assert result["status"] == "violation"
     assert result["remediation"] is None  # Q5: settings fix, never a queue item
     assert "gh api" in result["fix"]
 
 
-def test_protection_present_passes(make_repo):
-    repo = make_repo("x")
+def test_protection_present_passes():
     gh = _gh_protection(json.dumps({"required_pull_request_reviews": {}}))
-    assert check_protection(repo, "AlobarQuest/x", gh=gh)["status"] == "pass"
+    assert check_protection("AlobarQuest/x", gh=gh)["status"] == "pass"
 
 
 AGED = "---\nname: x\ntier: active\nstatus: active\nversion: 1.0.0\nversion_source: cargo\npurpose: p\nupdated: 2026-06-25\n---\n\n## Backlog\n- [ ] (P2) old thing — added 2020-01-01\n"

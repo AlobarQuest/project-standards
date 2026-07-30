@@ -251,7 +251,7 @@ def check_dependabot(repo: Path) -> dict:
     )
 
 
-def check_protection(repo: Path, slug: str, gh=_gh) -> dict:
+def check_protection(slug: str, gh=_gh) -> dict:
     """Branch protection on main — CHECK-AND-REPORT only (Q5): the fix is a
     command Devon runs, never a queue item, and the kit never writes settings."""
     raw = gh(["api", f"repos/{slug}/branches/main/protection"])
