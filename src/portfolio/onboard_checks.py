@@ -21,8 +21,10 @@ from pathlib import Path
 
 from . import config
 from .checkers import _run, check_security
+from .contract import VERSIONED_STANDARDS, current_standard_versions
 from .manifest import parse_frontmatter
 from .matrix import PASS, UNKNOWN, VIOLATION
+from .validator import lint
 
 
 def _gh(args: list[str]) -> str | None:
@@ -236,6 +238,83 @@ def check_profile_declared(repo: Path, registered_profiles: list[str] | None) ->
             remediation={"summary": "declare the repo's delivery profile in PROJECT.md"},
         )
     return _result("profile.declared", PASS)
+
+
+def check_dependabot(repo: Path) -> dict:
+    if (repo / ".github" / "dependabot.yml").is_file():
+        return _result("deps.dependabot", PASS)
+    return _result(
+        "deps.dependabot",
+        VIOLATION,
+        details=[{"id": "deps.no-dependabot", "message": ".github/dependabot.yml absent"}],
+        fix=f"cd {repo} && code-standards sync (vendors a tooling-appropriate dependabot.yml)",
+    )
+
+
+def check_protection(repo: Path, slug: str, gh=_gh) -> dict:
+    """Branch protection on main — CHECK-AND-REPORT only (Q5): the fix is a
+    command Devon runs, never a queue item, and the kit never writes settings."""
+    raw = gh(["api", f"repos/{slug}/branches/main/protection"])
+    if raw is None:
+        return _result(
+            "repo.protection",
+            VIOLATION,
+            details=[{"id": "repo.unprotected", "message": "main has no branch protection"}],
+            fix=(
+                f"gh api -X PUT repos/{slug}/branches/main/protection "
+                "-f required_pull_request_reviews.required_approving_review_count=1 "
+                "(Devon runs this; the kit never writes settings)"
+            ),
+        )
+    return _result("repo.protection", PASS)
+
+
+def check_backlog_hygiene(repo: Path) -> dict:
+    findings = lint(repo)
+    aged = [f for f in findings if f.code == "aged_item"]
+    if not aged:
+        return _result("backlog.hygiene", PASS)
+    return _result(
+        "backlog.hygiene",
+        VIOLATION,
+        details=[{"id": "backlog.aged", "message": f.message} for f in aged],
+        fix=f"triage or close the aged backlog items in {repo}/PROJECT.md",
+    )
+
+
+def check_standards_pinned(repo: Path) -> dict:
+    manifest_path = repo / "PROJECT.md"
+    if not manifest_path.is_file():
+        return _result(
+            "standards.pinned",
+            UNKNOWN,
+            details=[{"id": "standards.no-manifest", "message": "no PROJECT.md"}],
+            fix="fix project.manifest first",
+        )
+    frontmatter, _ = parse_frontmatter(manifest_path.read_text())
+    declared = frontmatter.get("applicable_standards") or {}
+    current = current_standard_versions()
+    drifted = []
+    for std in VERSIONED_STANDARDS:
+        pin = declared.get(std)
+        current_version = current.get(std)
+        if pin is None or current_version is None:
+            continue
+        if str(pin) != str(current_version):
+            drifted.append(
+                {
+                    "id": f"standards.{std}-drift",
+                    "message": f"{std}: pinned {pin}, current {current_version}",
+                }
+            )
+    if drifted:
+        return _result(
+            "standards.pinned",
+            VIOLATION,
+            details=drifted,
+            fix="update applicable_standards pins in PROJECT.md frontmatter",
+        )
+    return _result("standards.pinned", PASS)
 
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
