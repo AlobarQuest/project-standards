@@ -14,6 +14,7 @@ check that cannot see is never green.
 
 import base64
 import json
+import os
 import re
 import sys
 import tomllib
@@ -97,7 +98,7 @@ _UUID_PROBE = (
 def _referenced_uuid_count(repo: Path) -> int | None:
     result = _run(
         [sys.executable, "-c", _UUID_PROBE, str(repo)],
-        env={"PYTHONPATH": str(config.security_standards_src())},
+        env={**os.environ, "PYTHONPATH": str(config.security_standards_src())},
     )
     if result is None or result.returncode != 0:
         return None
@@ -512,6 +513,13 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
             fix=f"push to main (or re-run the workflow) in {slug}, then re-run this check",
         )
     run = runs[0]
+    if not run.get("conclusion"):
+        return _result(
+            "ci.executed",
+            UNKNOWN,
+            details=[{"id": "ci.in-progress", "message": "latest quality run has not concluded"}],
+            fix="wait for the in-progress quality run on main, then re-run",
+        )
     if run.get("conclusion") != "success":
         return _result(
             "ci.executed",

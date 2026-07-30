@@ -105,3 +105,10 @@ def test_ci_executed_no_runs_is_unknown(tmp_path):
     repo = _repo(tmp_path, ONBOARDED)
     result = check_ci_executed(repo, gh=_fake_gh(run_list="[]"))
     assert result["status"] == "unknown"
+
+
+def test_ci_executed_in_progress_run_is_unknown_not_violation(tmp_path):
+    repo = _repo(tmp_path, ONBOARDED)
+    gh = _fake_gh(run_list=json.dumps([{"databaseId": 42, "conclusion": None}]))
+    result = check_ci_executed(repo, gh=gh)
+    assert result["status"] == "unknown"
