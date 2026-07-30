@@ -7,6 +7,7 @@ from .add import add_item
 from .exceptions import ExceptionsError
 from .foundation import FoundationError, run_foundation
 from .init import init_repo
+from .onboard import run as onboard_run
 from .query import query
 from .scan import scan
 from .triage import assign, untriaged
@@ -37,7 +38,12 @@ def main(argv=None) -> int:  # noqa: C901
         p.add_argument(f"--{flag}")
     p.add_argument("--stale", action="store_true")
     p.add_argument("--has-backlog", action="store_true")
+    p = sub.add_parser("onboard")
+    p.add_argument("repo")
     args = parser.parse_args(argv)
+
+    if args.cmd == "onboard":
+        return onboard_run(Path(args.repo))
 
     if args.cmd == "init":
         print(f"initialized {init_repo(Path(args.repo), tier=args.tier).path}")

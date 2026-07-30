@@ -98,3 +98,12 @@ def claude_settings_path() -> Path:
 def launchagents_dir() -> Path:
     override = os.environ.get("LAUNCHAGENTS_DIR")
     return Path(override) if override else Path.home() / "Library" / "LaunchAgents"
+
+
+def intent_packages_dir() -> Path:
+    override = os.environ.get("INTENT_PACKAGES_DIR")
+    return Path(override) if override else Path.home() / "Projects" / "intent-packages"
+
+
+def factory_runner_slug() -> str:
+    return os.environ.get("FACTORY_RUNNER_SLUG", "AlobarQuest/factory-runner")

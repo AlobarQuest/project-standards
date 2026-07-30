@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "portfolio-readiness.v1.schema.json",
+  "title": "portfolio-readiness/v1",
+  "description": "Readiness result emitted by `portfolio onboard <repo>` (project-standards). Cross-repo contract consumed by `factory create --from-readiness` (intent-packages). Breaking changes bump the version string and both sides together.",
+  "type": "object",
+  "required": [
+    "schema",
+    "repo",
+    "generated",
+    "checks",
+    "admission_passed",
+    "certified",
+    "certification",
+    "remediation_queue"
+  ],
+  "properties": {
+    "schema": { "const": "portfolio-readiness/v1" },
+    "repo": { "type": "string" },
+    "generated": { "type": "string" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "details", "fix"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["pass", "violation", "unknown", "not-applicable"] },
+          "details": { "type": "array" },
+          "fix": { "type": ["string", "null"] },
+          "remediation": { "type": ["object", "null"] }
+        }
+      }
+    },
+    "admission_passed": { "type": "boolean" },
+    "certified": { "type": "boolean" },
+    "certification": {
+      "type": "object",
+      "required": ["method", "evidence"],
+      "properties": {
+        "method": { "const": "docs-canary/v1" },
+        "evidence": { "type": ["object", "null"] }
+      }
+    },
+    "remediation_queue": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check", "repo", "fix", "remediation"],
+        "properties": {
+          "check": { "type": "string" },
+          "repo": { "type": "string" },
+          "fix": { "type": "string" },
+          "remediation": { "type": "object" }
+        }
+      }
+    }
+  }
+}
