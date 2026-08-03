@@ -24,7 +24,7 @@ from . import config
 from .checkers import _run, check_security
 from .contract import VERSIONED_STANDARDS, current_standard_versions
 from .manifest import parse_frontmatter
-from .matrix import PASS, UNKNOWN, VIOLATION
+from .matrix import NA, PASS, UNKNOWN, VIOLATION
 from .validator import lint
 
 
@@ -34,6 +34,23 @@ def _gh(args: list[str]) -> str | None:
     if result is None or result.returncode != 0:
         return None
     return result.stdout
+
+
+def _gh_read(args: list[str]) -> tuple[str | None, str]:
+    """Run `gh` and return (stdout on success else None, why it failed).
+
+    `_gh` collapses every failure to None, which is right where the caller
+    only needs the value. It is wrong where the REASON changes the verdict:
+    GitHub reports a plan-limited feature and an unset one with different
+    errors, and a check that cannot tell them apart reports a defect the
+    repository does not have.
+    """
+    result = _run(["gh", *args])
+    if result is None:
+        return None, ""
+    if result.returncode != 0:
+        return None, f"{result.stdout}{result.stderr}"
+    return result.stdout, ""
 
 
 def _result(check_id, status, details=None, fix=None, remediation=None):
@@ -252,11 +269,49 @@ def check_dependabot(repo: Path) -> dict:
     )
 
 
-def check_protection(slug: str, gh=_gh) -> dict:
+_PROTECTION_PLAN_LIMITED = "upgrade to github pro"
+_PROTECTION_UNSET = "branch not protected"
+
+
+def check_protection(slug: str, gh_read=_gh_read) -> dict:
     """Branch protection on main — CHECK-AND-REPORT only (Q5): the fix is a
-    command Devon runs, never a queue item, and the kit never writes settings."""
-    raw = gh(["api", f"repos/{slug}/branches/main/protection"])
-    if raw is None:
+    command Devon runs, never a queue item, and the kit never writes settings.
+
+    Four outcomes, because "could not read it", "it is off", and "this plan
+    does not sell it" are different facts and only one of them is a repo
+    defect. GitHub answers a private repo on a free plan with a 403 naming the
+    upgrade; reporting that as a violation attaches a `gh api -X PUT` fix that
+    can only 403 in turn, which is a remediation nobody can follow. It is
+    NOT-APPLICABLE: the decision is procurement or visibility, and it is not
+    the repo's to make. An unreadable status is UNKNOWN rather than
+    unprotected, per this module's rule that a check which cannot see is never
+    green -- and never, in either direction, asserts what it did not observe.
+    """
+    raw, diagnostic = gh_read(["api", f"repos/{slug}/branches/main/protection"])
+    if raw is not None:
+        return _result("repo.protection", PASS)
+    lowered = diagnostic.lower()
+    if _PROTECTION_PLAN_LIMITED in lowered:
+        return _result(
+            "repo.protection",
+            NA,
+            details=[
+                {
+                    "id": "repo.protection-unavailable",
+                    "message": (
+                        "branch protection is not available for this repository "
+                        "(private repository on a plan that does not offer it)"
+                    ),
+                }
+            ],
+            fix=(
+                "not a repo defect and not fixable in the repo: either make the "
+                f"repository public, or move the account to a plan that offers "
+                f"branch protection on private repositories, then re-run. "
+                f"(repos/{slug})"
+            ),
+        )
+    if _PROTECTION_UNSET in lowered:
         return _result(
             "repo.protection",
             VIOLATION,
@@ -267,7 +322,18 @@ def check_protection(slug: str, gh=_gh) -> dict:
                 "(Devon runs this; the kit never writes settings)"
             ),
         )
-    return _result("repo.protection", PASS)
+    return _result(
+        "repo.protection",
+        UNKNOWN,
+        details=[
+            {
+                "id": "repo.protection-unreadable",
+                "message": "could not read branch protection: "
+                + (diagnostic.strip() or "no output"),
+            }
+        ],
+        fix=f"check `gh auth status` and re-run; repos/{slug} protection was not readable",
+    )
 
 
 def check_backlog_hygiene(repo: Path) -> dict:

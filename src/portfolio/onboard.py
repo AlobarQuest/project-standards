@@ -38,7 +38,9 @@ def _project_manifest_check(repo: Path) -> dict:
     }
 
 
-def _run_checks(repo: Path, gh, registered: list[str] | None) -> list[dict]:
+def _run_checks(
+    repo: Path, gh, registered: list[str] | None, gh_read=onboard_checks._gh_read
+) -> list[dict]:
     slug = onboard_checks.repo_slug(repo) or repo.name
     return [
         onboard_checks.check_git_current(repo),
@@ -49,7 +51,7 @@ def _run_checks(repo: Path, gh, registered: list[str] | None) -> list[dict]:
         onboard_checks.check_runner_caller(repo, slug, gh=gh),
         onboard_checks.check_profile_declared(repo, registered_profiles=registered),
         onboard_checks.check_dependabot(repo),
-        onboard_checks.check_protection(slug, gh=gh),
+        onboard_checks.check_protection(slug, gh_read=gh_read),
         onboard_checks.check_backlog_hygiene(repo),
         onboard_checks.check_standards_pinned(repo),
     ]
@@ -75,13 +77,13 @@ def _digest(document: dict) -> str:
     return "\n".join(lines)
 
 
-def run(repo: Path, gh=onboard_checks._gh) -> int:
+def run(repo: Path, gh=onboard_checks._gh, gh_read=onboard_checks._gh_read) -> int:
     if not repo.is_dir():
         print(f"onboard: not a directory: {repo}", file=sys.stderr)
         return 2
     try:
         registered = onboard_checks.registered_profiles()
-        checks = _run_checks(repo, gh, registered)
+        checks = _run_checks(repo, gh, registered, gh_read)
         document = build_result(repo.name, checks, datetime.now(UTC))
     except Exception as error:  # kit bug: never masquerade as a readiness verdict
         print(f"onboard: internal error: {error}", file=sys.stderr)

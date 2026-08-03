@@ -13,7 +13,7 @@ def _pass(check_id):
 
 @pytest.fixture
 def all_green(monkeypatch):
-    def fake_run_checks(repo, gh, registered):
+    def fake_run_checks(repo, gh, registered, gh_read=None):
         return [_pass(c) for c in ADMISSION_CHECKS + ADVISORY_CHECKS]
 
     monkeypatch.setattr(onboard, "_run_checks", fake_run_checks)
@@ -36,7 +36,7 @@ def test_onboard_green_exit_zero_writes_result(portfolio_env, make_repo, all_gre
 def test_onboard_admission_failure_exit_one_digest_names_fix(
     portfolio_env, make_repo, monkeypatch, capsys
 ):
-    def fake_run_checks(repo, gh, registered):
+    def fake_run_checks(repo, gh, registered, gh_read=None):
         checks = [_pass(c) for c in ADMISSION_CHECKS + ADVISORY_CHECKS]
         checks[0] = {
             "id": ADMISSION_CHECKS[0],
@@ -64,7 +64,7 @@ def test_onboard_missing_repo_exit_two(portfolio_env, tmp_path, capsys):
 
 
 def test_onboard_internal_error_exit_two(portfolio_env, make_repo, monkeypatch, capsys):
-    def boom(repo, gh, registered):
+    def boom(repo, gh, registered, gh_read=None):
         raise RuntimeError("kit bug")
 
     monkeypatch.setattr(onboard, "_run_checks", boom)
