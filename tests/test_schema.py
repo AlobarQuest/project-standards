@@ -135,3 +135,18 @@ def test_malformed_exception_entry_fails(base_fm):
 def test_bad_required_checks_fails(base_fm):
     fm = {**base_fm, "applicable_standards": {"project": "1.0"}, "required_checks": "quality"}
     assert "contract_error" in _codes(validate_frontmatter(fm))
+
+
+def test_factory_target_not_bool_is_bad_type():
+    """A quoted "false" reads as "nothing declared" everywhere downstream, so
+    without this FAIL a declaration could sit in the file and be inert in every
+    consumer (ADR-0015)."""
+    assert any(
+        f.code == "bad_type" and f.severity == "FAIL" and "factory_target" in f.message
+        for f in validate_frontmatter(_active(factory_target="false"))
+    )
+
+
+@pytest.mark.parametrize("declared", [True, False])
+def test_a_bool_factory_target_is_accepted(declared):
+    assert validate_frontmatter(_active(factory_target=declared)) == []

@@ -95,3 +95,73 @@ def test_declared_pin_unreachable_is_unknown_never_green(tmp_path):
     repo = _repo(tmp_path, caller=_caller(PIN))
     gh = _fake_gh(fail_on=("RECOMMENDED_CALLER_PIN",))
     assert check_runner_caller(repo, "AlobarQuest/repo", gh=gh)["status"] == "unknown"
+
+
+# --------------------------------------------------------------------------
+# ADR-0015: Q2's one read of Q1
+# --------------------------------------------------------------------------
+
+MANIFEST = (
+    "---\nname: x\ntier: active\nstatus: active\nversion: 1.0.0\nversion_source: pyproject\n"
+    "purpose: p\nupdated: 2026-08-17\n{extra}---\n\n## Backlog\n"
+)
+
+
+def _declaring(tmp_path, extra, caller=None):
+    repo = _repo(tmp_path, caller=caller)
+    (repo / "PROJECT.md").write_text(MANIFEST.format(extra=extra))
+    return repo
+
+
+def test_a_declared_non_target_with_no_caller_is_not_applicable(tmp_path):
+    """ADR-0015: 'a repository that declares itself not-a-target must read
+    not-applicable on runner.caller -- never violation.' Without this the
+    decision does not survive its own recording: the kit keeps reporting a
+    defect, and a standing defect invites a future session to resolve it by
+    adding a caller, deciding the scope question by satisfying a checklist."""
+    repo = _declaring(
+        tmp_path,
+        "factory_target: false\nfactory_target_reason: the runner may not maintain itself\n",
+    )
+    result = check_runner_caller(repo, "AlobarQuest/repo", gh=_fake_gh())
+    assert result["status"] == "not-applicable"
+    assert "the runner may not maintain itself" in result["details"][0]["message"]
+    assert result["remediation"] is None
+
+
+def test_a_declared_non_target_without_a_reason_still_reads_not_applicable(tmp_path):
+    repo = _declaring(tmp_path, "factory_target: false\n")
+    result = check_runner_caller(repo, "AlobarQuest/repo", gh=_fake_gh())
+    assert result["status"] == "not-applicable"
+    assert "factory_target: false" in result["details"][0]["message"]
+
+
+def test_declaring_non_target_while_hosting_a_caller_stays_a_violation(tmp_path):
+    """The dangerous inverse: dispatchable but not intended. Q1 turns a Q2
+    VIOLATION into not-applicable; it never turns a Q2 FAILURE into a pass, and
+    hosting a caller is the repository contradicting its own declaration.
+    `project-standards` sat in this state for ten days."""
+    repo = _declaring(tmp_path, "factory_target: false\n", caller=_caller(PIN))
+    result = check_runner_caller(repo, "AlobarQuest/repo", gh=_fake_gh())
+    assert result["status"] == "violation"
+    assert result["details"][0]["id"] == "runner.caller-contradicts-declaration"
+
+
+def test_declaring_target_true_leaves_the_check_unchanged(tmp_path):
+    repo = _declaring(tmp_path, "factory_target: true\n")
+    assert check_runner_caller(repo, "AlobarQuest/repo", gh=_fake_gh())["status"] == "violation"
+
+
+def test_a_quoted_false_is_not_a_declaration(tmp_path):
+    """`factory_target: "false"` is a string. Reading it as a declaration would
+    silently excuse a repository on a typo, so it reads as nothing declared and
+    the check stays where it was; the schema validator FAILs it separately."""
+    repo = _declaring(tmp_path, 'factory_target: "false"\n')
+    result = check_runner_caller(repo, "AlobarQuest/repo", gh=_fake_gh())
+    assert result["status"] == "violation"
+    assert result["details"][0]["id"] == "runner.no-caller"
+
+
+def test_no_manifest_at_all_leaves_the_check_unchanged(tmp_path):
+    repo = _repo(tmp_path, caller=None)
+    assert check_runner_caller(repo, "AlobarQuest/repo", gh=_fake_gh())["status"] == "violation"

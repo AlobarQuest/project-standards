@@ -40,6 +40,17 @@ def validate_frontmatter(fm: dict) -> list[Finding]:  # noqa: C901
             Finding("FAIL", "bad_type", f"foundation must be a bool, got {fm['foundation']!r}")
         )
 
+    # ADR-0015: being a factory target is DECLARED. A non-bool here (the classic
+    # one being a quoted "false") is read as "nothing declared" by
+    # manifest.factory_target_declaration, so without this FAIL the declaration
+    # would be silently inert -- present in the file, absent in every consumer.
+    if "factory_target" in fm and not isinstance(fm["factory_target"], bool):
+        findings.append(
+            Finding(
+                "FAIL", "bad_type", f"factory_target must be a bool, got {fm['factory_target']!r}"
+            )
+        )
+
     from .contract import parse_contract  # local import: contract imports KNOWN_STANDARDS
 
     contract = parse_contract(fm)
