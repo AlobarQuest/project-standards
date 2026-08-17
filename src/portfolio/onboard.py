@@ -13,10 +13,15 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from . import config, onboard_checks
+from . import config, factory_checks, onboard_checks
 from .checkers import check_project
 from .matrix import PASS
-from .readiness_schema import ADMISSION_CHECKS, ADVISORY_CHECKS, build_result
+from .readiness_schema import (
+    ADMISSION_CHECKS,
+    ADVISORY_CHECKS,
+    CAPABILITY_CHECKS,
+    build_result,
+)
 
 
 def _project_manifest_check(repo: Path) -> dict:
@@ -54,21 +59,31 @@ def _run_checks(
         onboard_checks.check_protection(slug, gh_read=gh_read),
         onboard_checks.check_backlog_hygiene(repo),
         onboard_checks.check_standards_pinned(repo),
+        *factory_checks.run_factory_checks(repo, slug, gh=gh),
     ]
 
 
 def _digest(document: dict) -> str:
     lines = [f"readiness: {document['repo']} — admission "]
     lines[0] += "PASSED" if document["admission_passed"] else "FAILED"
-    by_kind = {"admission": ADMISSION_CHECKS, "advisory": ADVISORY_CHECKS}
+    by_kind = {
+        "admission": ADMISSION_CHECKS,
+        "advisory": ADVISORY_CHECKS,
+        "capability": CAPABILITY_CHECKS,
+    }
     for kind, ids in by_kind.items():
         for check in document["checks"]:
             if check["id"] not in ids:
                 continue
             mark = "ok" if check["status"] == "pass" else check["status"].upper()
             line = f"  [{mark}] {check['id']} ({kind})"
-            if check["status"] != "pass" and check["fix"]:
-                line += f"\n        next: {check['fix']}"
+            if check["status"] != "pass":
+                # Name what failed, never a bare symbol: a result nobody can act
+                # on has the practical value of a check that never ran.
+                for detail in check["details"]:
+                    line += f"\n        {detail['id']}: {detail['message']}"
+                if check["fix"]:
+                    line += f"\n        next: {check['fix']}"
             lines.append(line)
     lines.append(
         "  certification: not attempted — a docs-only canary through the factory is the"

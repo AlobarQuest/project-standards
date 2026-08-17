@@ -98,3 +98,71 @@ def test_document_matches_published_schema_required_keys():
     for key in published["required"]:
         assert key in result
     assert published["properties"]["schema"]["const"] == SCHEMA_VERSION
+
+
+# --------------------------------------------------------------------------
+# not-applicable, and the capability group
+# --------------------------------------------------------------------------
+
+from portfolio.readiness_schema import CAPABILITY_CHECKS  # noqa: E402
+
+
+def _status(check_id, status):
+    return {"id": check_id, "status": status, "details": [], "fix": "f", "remediation": None}
+
+
+def test_a_not_applicable_admission_check_satisfies_admission():
+    """ADR-0015's declaration must retire the finding, not rename it: if
+    not-applicable still failed admission, a repository declaring itself not a
+    factory target would go on reporting a failure with a different word on it.
+    """
+    checks = _all_passing()
+    checks[ADMISSION_CHECKS.index("runner.caller")] = _status("runner.caller", "not-applicable")
+    assert build_result("factory-runner", checks, GENERATED)["admission_passed"] is True
+
+
+def test_not_applicable_never_queues_remediation():
+    checks = _all_passing()
+    checks[0] = {
+        "id": ADMISSION_CHECKS[0],
+        "status": "not-applicable",
+        "details": [],
+        "fix": "f",
+        "remediation": {"summary": "should not be queued"},
+    }
+    assert build_result("x", checks, GENERATED)["remediation_queue"] == []
+
+
+def test_unknown_and_violation_still_fail_admission():
+    """The other direction, asserted alongside so the loosening is bounded: only
+    not-applicable was added, and a check that could not see is still not a
+    check that found nothing to object to."""
+    for status in ("unknown", "violation"):
+        checks = _all_passing()
+        checks[0] = _status(ADMISSION_CHECKS[0], status)
+        assert build_result("x", checks, GENERATED)["admission_passed"] is False, status
+
+
+def test_capability_checks_never_touch_admission_or_the_queue():
+    """Q2 capability is reported, not admitted on. `factory.pat_scope` is
+    structurally unknown for a fine-grained PAT, so an admission consuming it
+    would be permanently unachievable for every repository; and these are
+    estate-side facts (a settings page, an App Brain record) that no repository
+    can remediate in its own tree."""
+    checks = _all_passing() + [
+        {
+            "id": cid,
+            "status": "violation",
+            "details": [{"id": f"{cid}.x", "message": "m"}],
+            "fix": "f",
+            "remediation": {"summary": "should not be queued"},
+        }
+        for cid in CAPABILITY_CHECKS
+    ]
+    result = build_result("x", checks, GENERATED)
+    assert result["admission_passed"] is True
+    assert result["remediation_queue"] == []
+
+
+def test_capability_checks_are_disjoint_from_admission_and_advisory():
+    assert not set(CAPABILITY_CHECKS) & set(ADMISSION_CHECKS + ADVISORY_CHECKS)

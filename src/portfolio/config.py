@@ -107,3 +107,25 @@ def intent_packages_dir() -> Path:
 
 def factory_runner_slug() -> str:
     return os.environ.get("FACTORY_RUNNER_SLUG", "AlobarQuest/factory-runner")
+
+
+# Q2 (factory capability) credentials. The kit READS these from the environment and
+# never fetches them: a conformance tool that reaches for secrets is a different
+# security surface from one that reads files, and this one is meant to run in more
+# places than the operator's machine. Absent => the check reports `unknown` with a
+# named reason, never `pass` and never `violation`. The launcher
+# (integrations/portfolio-scan.sh) is where BWS is consulted.
+FACTORY_PAT_ENV = "FACTORY_PR_TOKEN"
+APP_BRAIN_KEY_ENV = "APP_BRAIN_READ_KEY"
+
+
+def factory_pat() -> str | None:
+    return os.environ.get(FACTORY_PAT_ENV) or None
+
+
+def app_brain_url() -> str:
+    return os.environ.get("APP_BRAIN_URL") or "https://app-brain.devonwatkins.com"
+
+
+def app_brain_read_key() -> str | None:
+    return os.environ.get(APP_BRAIN_KEY_ENV) or None

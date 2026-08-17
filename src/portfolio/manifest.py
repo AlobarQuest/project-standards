@@ -58,6 +58,28 @@ def write_manifest(m: Manifest) -> None:
     m.path.write_text(render(m.frontmatter, m.body))
 
 
+def factory_target_declaration(repo: Path) -> tuple[bool | None, str | None]:
+    """A repo's own answer to "do I want to be a factory target?" (ADR-0015).
+
+    Returns (declared, reason): `declared` is the frontmatter `factory_target`
+    when it is a real bool and None otherwise -- an absent key, a string
+    `"false"`, a missing manifest and unreadable YAML all read as "nothing
+    declared", never as "declared false". That direction is deliberate: a
+    declaration is what turns a check's `violation` into `not-applicable`, so
+    anything short of an unambiguous bool must leave the check where it was.
+    The schema validator FAILs a non-bool value, so a typo is loud rather than
+    silently inert.
+    """
+    m = read_manifest(repo)
+    if m is None or "_yaml_error" in m.frontmatter:
+        return None, None
+    declared = m.frontmatter.get("factory_target")
+    if not isinstance(declared, bool):
+        return None, None
+    reason = m.frontmatter.get("factory_target_reason")
+    return declared, reason if isinstance(reason, str) and reason.strip() else None
+
+
 def parse_backlog(body: str) -> list[BacklogItem]:
     items, in_section = [], False
     for line in body.splitlines():

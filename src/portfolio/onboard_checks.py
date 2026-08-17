@@ -23,7 +23,7 @@ from pathlib import Path
 from . import config
 from .checkers import _run, check_security
 from .contract import VERSIONED_STANDARDS, current_standard_versions
-from .manifest import parse_frontmatter
+from .manifest import factory_target_declaration, parse_frontmatter
 from .matrix import NA, PASS, UNKNOWN, VIOLATION
 from .validator import lint
 
@@ -431,9 +431,69 @@ def required_secrets(sha: str, gh=_gh) -> set[str] | None:
     return names or None
 
 
+def _declared_non_target(caller: Path, declared_reason: str | None) -> dict:
+    """`runner.caller` for a repository that declares itself not a factory target.
+
+    No caller is a DECISION, so it reads `not-applicable`. Still hosting one is
+    the dangerous inverse -- dispatchable but not intended -- so it stays a
+    violation: Q1 turns a Q2 violation into not-applicable, never a Q2 failure
+    into a pass. `project-standards` sat in that contradiction for ten days.
+    """
+    if caller.is_file():
+        return _result(
+            "runner.caller",
+            VIOLATION,
+            details=[
+                {
+                    "id": "runner.caller-contradicts-declaration",
+                    "message": (
+                        "PROJECT.md declares factory_target: false but the repository hosts "
+                        "factory-runner-pilot.yml, so it remains dispatchable against its own "
+                        "declaration"
+                    ),
+                }
+            ],
+            fix=(
+                f"delete {caller} (the declaration is the decision), or set "
+                "`factory_target: true` if the repository is meant to be a target"
+            ),
+            remediation={"summary": "remove the caller workflow from a declared non-target"},
+        )
+    reason = declared_reason or "PROJECT.md declares factory_target: false"
+    return _result(
+        "runner.caller",
+        NA,
+        details=[
+            {
+                "id": "runner.not-a-factory-target",
+                "message": (
+                    "this repository declares itself not a factory target, so having no "
+                    f"caller workflow is a decision rather than a defect: {reason}"
+                ),
+            }
+        ],
+        fix=(
+            "nothing to fix: set `factory_target: true` in PROJECT.md frontmatter if the "
+            "decision changes, then add the caller workflow"
+        ),
+    )
+
+
 def check_runner_caller(repo: Path, slug: str, gh=_gh) -> dict:
+    """Can the factory send work INTO this repository? (Q2's fifth check.)
+
+    **This is the one place Q2 reads Q1.** A caller workflow is the only thing
+    that makes a repository dispatchable, so applied uniformly the check
+    converts an unmade scope decision into a standing defect -- which then
+    invites a future session to resolve it by adding a caller, deciding the
+    scope question by satisfying a checklist (ADR-0015). See
+    `_declared_non_target` for what a declaration may and may not do.
+    """
     caller = repo / ".github" / "workflows" / "factory-runner-pilot.yml"
     template = Path(__file__).parent / "templates" / "factory-runner-caller.yml"
+    declared, declared_reason = factory_target_declaration(repo)
+    if declared is False:
+        return _declared_non_target(caller, declared_reason)
     if not caller.is_file():
         return _result(
             "runner.caller",

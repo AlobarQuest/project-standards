@@ -1,3 +1,5 @@
+import pytest
+
 from portfolio.manifest import (
     append_backlog_item,
     parse_backlog,
@@ -82,3 +84,62 @@ def test_parse_frontmatter_bad_yaml_does_not_raise():
 
 def test_read_missing_returns_none(tmp_path):
     assert read_manifest(tmp_path) is None
+
+
+FACTORY_FRONT = (
+    "---\nname: x\ntier: active\nstatus: active\nversion: 1.0.0\nversion_source: pyproject\n"
+    "purpose: p\nupdated: 2026-08-17\n{extra}---\n\n## Backlog\n"
+)
+
+
+def _declaration(tmp_path, extra):
+    from portfolio.manifest import factory_target_declaration
+
+    repo = tmp_path / "repo"
+    repo.mkdir(exist_ok=True)
+    (repo / "PROJECT.md").write_text(FACTORY_FRONT.format(extra=extra))
+    return factory_target_declaration(repo)
+
+
+def test_factory_target_declaration_reads_a_bool_and_its_reason(tmp_path):
+    assert _declaration(tmp_path, "factory_target: false\nfactory_target_reason: because\n") == (
+        False,
+        "because",
+    )
+    assert _declaration(tmp_path, "factory_target: true\n") == (True, None)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    ['factory_target: "false"\n', "factory_target: 0\n", "factory_target: no-thanks\n", ""],
+)
+def test_anything_short_of_a_bool_declares_nothing(tmp_path, extra):
+    """The helper's own contract, pinned directly.
+
+    Its only consumer today tests `declared is False`, which already rejects a
+    string — so this guard is redundant *for that consumer* and a mutation
+    removing it survives the whole suite. The promise is the helper's, not the
+    consumer's: a declaration is what turns a check's violation into
+    not-applicable, so a typo must never excuse a repository. Anything else
+    leaves the contract resting on one caller's choice of comparison operator.
+    """
+    assert _declaration(tmp_path, extra) == (None, None)
+
+
+def test_an_absent_or_unreadable_manifest_declares_nothing(tmp_path):
+    from portfolio.manifest import factory_target_declaration
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert factory_target_declaration(empty) == (None, None)
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    (bad / "PROJECT.md").write_text("---\nname: [unclosed\n---\n\nbody\n")
+    assert factory_target_declaration(bad) == (None, None)
+
+
+def test_a_blank_reason_is_no_reason(tmp_path):
+    assert _declaration(tmp_path, "factory_target: false\nfactory_target_reason: '   '\n") == (
+        False,
+        None,
+    )
