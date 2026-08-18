@@ -5,6 +5,10 @@
 set -euo pipefail
 
 export PYTHONPATH="$HOME/Projects/project-standards/src"
+
+# shellcheck source=integrations/_python.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_python.sh"
+PY_BIN="$(portfolio_python)"
 LOG="$HOME/.portfolio/scan.log"
 mkdir -p "$HOME/.portfolio"
 
@@ -38,7 +42,7 @@ creds="$creds brain=$([ -n "${APP_BRAIN_READ_KEY:-}" ] && echo yes || echo no)"
 # ---------------------------------------------------------------------------
 
 ts="$(date '+%Y-%m-%d %H:%M:%S')"
-if out="$(python3 -m portfolio scan 2>&1)"; then
+if out="$("$PY_BIN" -m portfolio scan 2>&1)"; then
   echo "[$ts] ok    [$creds] $out" >> "$LOG"
   echo "$out"
 else

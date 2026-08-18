@@ -5,7 +5,11 @@
 # For each item: type a repo NAME (e.g. 'brain'), a full PATH, [s]kip, or [q]uit.
 set -uo pipefail
 export PYTHONPATH="$HOME/Projects/project-standards/src"
-pf() { python3 -m portfolio "$@"; }
+
+# shellcheck source=integrations/_python.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_python.sh"
+PY_BIN="$(portfolio_python)"
+pf() { "$PY_BIN" -m portfolio "$@"; }
 
 resolve_repo() {
   local name="$1"
