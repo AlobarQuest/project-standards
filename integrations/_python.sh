@@ -22,7 +22,9 @@ portfolio_python() {
     /usr/local/bin/python3 \
     "$(command -v python3 2>/dev/null || true)"
   do
-    [ -n "$candidate" ] && [ -x "$candidate" ] || continue
+    if [ -z "$candidate" ] || [ ! -x "$candidate" ]; then
+      continue
+    fi
     if "$candidate" -c "import sys; raise SystemExit(0 if sys.version_info >= ($min_major, $min_minor) else 1)" 2>/dev/null; then
       printf '%s\n' "$candidate"
       return 0
