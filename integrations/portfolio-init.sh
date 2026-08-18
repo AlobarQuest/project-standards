@@ -9,7 +9,11 @@
 #   portfolio-init.sh --purpose "does X"      # non-interactive (for lifecycle automation)
 set -uo pipefail
 export PYTHONPATH="$HOME/Projects/project-standards/src"
-pf() { python3 -m portfolio "$@"; }
+
+# shellcheck source=integrations/_python.sh
+. "$(dirname "${BASH_SOURCE[0]}")/_python.sh"
+PY_BIN="$(portfolio_python)"
+pf() { "$PY_BIN" -m portfolio "$@"; }
 
 repo="$PWD"; tier="active"; purpose=""
 while [ $# -gt 0 ]; do

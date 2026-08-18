@@ -4,7 +4,7 @@
 set -euo pipefail
 REPO="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -z "$REPO" ] && exit 0
-OUT="$(PYTHONPATH="$HOME/Projects/project-standards/src" python3 -m portfolio lint "$REPO" 2>/dev/null || true)"
+OUT="$(PYTHONPATH="$HOME/Projects/project-standards/src" "$PY_BIN" -m portfolio lint "$REPO" 2>/dev/null || true)"
 if echo "$OUT" | grep -q "FAIL missing_manifest"; then
   echo "💡 portfolio: this repo has no PROJECT.md — run 'portfolio init .' to add one." >&2
 elif echo "$OUT" | grep -q "FAIL"; then
