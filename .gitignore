@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 dist/
 build/
+
+# Build-session worktrees (see CLAUDE.md: build sessions get their own worktree).
+.worktrees/
