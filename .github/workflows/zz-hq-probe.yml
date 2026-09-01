@@ -1,0 +1,11 @@
+# Throwaway probe (ADR-0038 Increment 5). Created and deleted in the same minute to
+# measure whether this credential may push a workflow-file DELETION. Triggers on
+# nothing but a manual dispatch, so it cannot run.
+name: zz hq probe
+on:
+  workflow_dispatch:
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'true'
