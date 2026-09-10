@@ -3,6 +3,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from portfolio.onboard_checks import check_git_current
 
 
@@ -94,20 +96,26 @@ def test_missing_origin_fires_never_green(tmp_path):
     assert "fetch" in result["details"][0]["message"]
 
 
-def test_the_check_leaves_the_working_tree_byte_identical(tmp_path):
+@pytest.mark.parametrize("origin_moved", [True, False])
+def test_the_check_leaves_the_working_tree_byte_identical(tmp_path, origin_moved):
     """The module docstring's read-only claim, split the way it is actually true.
 
     The kit is read-only against the target's WORKING TREE and is not read-only
-    against its `.git/`. Both halves are asserted here, and the origin is
-    advanced first so the fetch has real work to do — against an already-current
-    origin a fetch that had silently stopped fetching would pass this test.
+    against its `.git/`. Both halves are asserted here.
 
-    `.git` mtimes are deliberately NOT asserted wholesale: the check's own
-    `git status --porcelain` refreshes `.git/index`'s stat cache, which is a
-    write to `.git/` and not a write to the tree.
+    BOTH PATHS ARE EXERCISED, and that is not thoroughness for its own sake: an
+    advanced origin makes `HEAD != origin/main`, so the check returns at the ref
+    comparison and never reaches `git status --porcelain`. A test written on
+    that path alone would pin the working-tree claim for two of the four git
+    subcommands. The advanced case is still needed — against an already-current
+    origin, a fetch that had silently stopped fetching would pass unnoticed.
+
+    `.git` is deliberately not fingerprinted: the fetch's own writes are the
+    point, and on the advanced path they include objects.
     """
     origin, checkout = _clone_with_origin(tmp_path)
-    _advance_origin(origin)
+    if origin_moved:
+        _advance_origin(origin)
     stale = _rev(checkout, "origin/main")
     before = _tree_fingerprint(checkout)
     assert not (checkout / ".git" / "FETCH_HEAD").exists()
@@ -115,11 +123,16 @@ def test_the_check_leaves_the_working_tree_byte_identical(tmp_path):
     result = check_git_current(checkout)
 
     assert _tree_fingerprint(checkout) == before
-    # The fetch happened and moved the remote-tracking ref, so the tree being
-    # untouched is a measurement rather than an artefact of nothing running.
-    assert result["status"] == "violation"
-    assert _rev(checkout, "origin/main") != stale
     assert (checkout / ".git" / "FETCH_HEAD").exists()
+    if origin_moved:
+        # The fetch moved the remote-tracking ref, so the untouched tree is a
+        # measurement rather than an artefact of nothing having run.
+        assert result["status"] == "violation"
+        assert _rev(checkout, "origin/main") != stale
+    else:
+        # Runs past the ref comparison to `git status --porcelain`.
+        assert result["status"] == "pass"
+        assert _rev(checkout, "origin/main") == stale
 
 
 def test_the_working_tree_fingerprint_would_notice_a_write(tmp_path):
@@ -131,4 +144,21 @@ def test_the_working_tree_fingerprint_would_notice_a_write(tmp_path):
     _, checkout = _clone_with_origin(tmp_path)
     before = _tree_fingerprint(checkout)
     (checkout / "README.md").write_text("written by something\n")
+    assert _tree_fingerprint(checkout) != before
+
+
+def test_the_working_tree_fingerprint_would_notice_a_same_content_rewrite(tmp_path):
+    """Second control, because `st_mtime_ns` is the component nothing else pins.
+
+    The control above changes content, size and mtime together, so it passes
+    against a fingerprint that had dropped mtime. Mtime is the only component
+    that catches a rewrite of a file with its own bytes — the shape a
+    working-tree write would most plausibly take here, since `git checkout -- .`
+    over a clean tree touches every file and changes none of them.
+    """
+    _, checkout = _clone_with_origin(tmp_path)
+    before = _tree_fingerprint(checkout)
+    readme = checkout / "README.md"
+    readme.write_bytes(readme.read_bytes())
+    os.utime(readme, (0, 0))
     assert _tree_fingerprint(checkout) != before

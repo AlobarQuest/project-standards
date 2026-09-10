@@ -696,13 +696,16 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
 def check_git_current(repo: Path) -> dict:
     """Is the checkout current with, and clean against, origin/main?
 
-    THE FETCH IS THE ONE PLACE THIS KIT WRITES TO A TARGET REPO, and it is
+    THE FETCH IS THE LARGEST THING THIS KIT WRITES TO A TARGET REPO, and it is
     load-bearing: without it the comparison below runs against stale
     remote-tracking refs, where `HEAD == origin/main` is trivially true, so a
-    checkout behind its remote reads as current. It touches `.git/` only —
-    `FETCH_HEAD` every run, `refs/remotes/origin/main` and its reflog when the
-    remote has moved — never the working tree and never the remote. See
-    `test_the_check_leaves_the_working_tree_byte_identical`.
+    checkout behind its remote reads as current. It writes inside `.git/` only —
+    `FETCH_HEAD` every run, and when the remote has moved the fetched objects
+    (unbounded, unlike the rest of this list) plus `refs/remotes/origin/main` and
+    its reflog. Never a tracked file, and never the remote; the `git status`
+    below rewrites `.git/index`'s stat cache and nothing else.
+    `test_the_check_leaves_the_working_tree_byte_identical` pins the working-tree
+    half, on both the path that returns here and the one that runs to the end.
     """
     fetch = _git(repo, "fetch", "--quiet", "origin", "main")
     if fetch is None or fetch.returncode != 0:

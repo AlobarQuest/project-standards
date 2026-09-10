@@ -8,14 +8,17 @@ failed, 2 = the kit itself could not run.
 
 Read-only against GitHub settings by design (Q5), and never writes to a remote.
 Read-only against the target repo's WORKING TREE — but NOT against its `.git/`.
-`check_git_current` runs `git fetch --quiet origin main`, the only mutating git
-subcommand the kit issues against a target; it writes `.git/FETCH_HEAD` on every
-run and rewrites `.git/refs/remotes/origin/main` and that ref's reflog whenever
-the remote has moved. (`git status --porcelain`, one of the read-only ones, also
-refreshes `.git/index`'s stat cache.) The fetch is load-bearing rather than
-incidental: without it the check compares HEAD against stale remote-tracking
-refs, where `HEAD == origin/main` is trivially true, so a checkout behind its
-remote reads as current — the check reports a repo it never looked at.
+`check_git_current` runs `git fetch --quiet origin main`, which writes
+`.git/FETCH_HEAD` on every run and, when the remote has moved, the fetched
+OBJECTS — loose or packed, and sized by how far behind the checkout is, so this
+is the large write rather than the metadata — plus `.git/refs/remotes/origin/main`
+and that ref's reflog. Its `git status --porcelain` separately rewrites
+`.git/index`'s stat cache. So two of the four git subcommands the kit issues
+against a target write inside `.git/`, and none of the four touches a tracked
+file. The fetch is load-bearing rather than incidental: without it the check
+compares HEAD against stale remote-tracking refs, where `HEAD == origin/main` is
+trivially true, so a checkout behind its remote reads as current — the check
+reports a repo it never looked at.
 """
 
 import json
