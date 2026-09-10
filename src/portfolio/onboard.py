@@ -4,8 +4,21 @@ Runs the admission + advisory check set against ONE repo and emits the
 portfolio-readiness/v1 document: JSON to stdout, a human digest (next action
 named for every failure) to stderr, and a copy under
 ~/.portfolio/readiness/<name>.json. Exit 0 = admission passed, 1 = admission
-failed, 2 = the kit itself could not run. Read-only against the target repo
-and GitHub settings by design (Q5).
+failed, 2 = the kit itself could not run.
+
+Read-only against GitHub settings by design (Q5), and never writes to a remote.
+Read-only against the target repo's WORKING TREE — but NOT against its `.git/`.
+`check_git_current` runs `git fetch --quiet origin main`, which writes
+`.git/FETCH_HEAD` on every run and, when the remote has moved, the fetched
+OBJECTS — loose or packed, and sized by how far behind the checkout is, so this
+is the large write rather than the metadata — plus `.git/refs/remotes/origin/main`
+and that ref's reflog. Its `git status --porcelain` separately rewrites
+`.git/index`'s stat cache. So two of the four git subcommands the kit issues
+against a target write inside `.git/`, and none of the four touches a tracked
+file. The fetch is load-bearing rather than incidental: without it the check
+compares HEAD against stale remote-tracking refs, where `HEAD == origin/main` is
+trivially true, so a checkout behind its remote reads as current — the check
+reports a repo it never looked at.
 """
 
 import json
