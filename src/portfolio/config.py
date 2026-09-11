@@ -129,3 +129,47 @@ def app_brain_url() -> str:
 
 def app_brain_read_key() -> str | None:
     return os.environ.get(APP_BRAIN_KEY_ENV) or None
+
+
+# The "Alobar SDS Dispatch" GitHub App — the OTHER credential factory work needs.
+# `FACTORY_PR_TOKEN` checks out and opens the pull request; this App fires
+# `workflow_dispatch`, reads the named check, and lands the pull request.
+#
+# THIS IS THE MOST POWERFUL VALUE THE KIT ACCEPTS, and it is worth saying so where
+# an operator will read it. The PAT is a repository-scoped token; this is a private
+# key, and a key mints installation tokens across everything the installation
+# reaches. Measured 2026-09-11: `repository_selection: all`, 75 repositories, 57 of
+# them writable, with `contents: write` and `workflows: write`. So it belongs in
+# `~/.portfolio/credentials.env` (0600, outside every repository) beside the other
+# two, and nowhere in a repository.
+#
+# BASE64, not a raw PEM, and the encoding is not this kit's invention: the
+# orchestrator consumes the same secret as ORCHESTRATOR_GITHUB_APP_PRIVATE_KEY_B64.
+# A single line keeps `credentials.env` an ordinary KEY=value file. The variable is
+# deliberately NOT the orchestrator's name — that prefix is a pydantic settings
+# namespace, and a machine running both should not have one file feed two consumers
+# that disagree about what the prefix means.
+#
+# Same rule as the other two: read from the ENVIRONMENT, never fetched. A
+# conformance tool that reaches for secrets is a different security surface from one
+# that reads files, and the Q2 spec is binding on it. Absent => `unknown` with a
+# named reason, never `pass` and never `violation`.
+DISPATCH_APP_KEY_ENV = "DISPATCH_APP_PRIVATE_KEY_B64"
+
+# Not secret, and published in orchestrator's `.bws-secrets.toml` beside the key.
+# Overridable so a test or a second installation does not need the environment to
+# be lied to.
+DISPATCH_APP_ID = "4259746"
+DISPATCH_APP_INSTALLATION_ID = "145535298"
+
+
+def dispatch_app_private_key_b64() -> str | None:
+    return os.environ.get(DISPATCH_APP_KEY_ENV) or None
+
+
+def dispatch_app_id() -> str:
+    return os.environ.get("DISPATCH_APP_ID") or DISPATCH_APP_ID
+
+
+def dispatch_app_installation_id() -> str:
+    return os.environ.get("DISPATCH_APP_INSTALLATION_ID") or DISPATCH_APP_INSTALLATION_ID
