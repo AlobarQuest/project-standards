@@ -34,12 +34,16 @@ ADVISORY_CHECKS = (
 # repository can fix in its own tree -- while these are estate-side facts owned by
 # a settings page on the account holding a PAT, or by an App Brain record. Neither
 # is remediable from the repository, so none of them carries a `remediation`
-# payload and none reaches the remediation queue.
+# payload and none reaches the remediation queue. `factory.app_access` joined on
+# 2026-09-11 and belongs here for the same second reason: it is a fact about a
+# GitHub App installation on the account, which no repository can change in its
+# own tree.
 CAPABILITY_CHECKS = (
     "factory.pat_access",
     "factory.pat_scope",
     "factory.secrets",
     "factory.landing_known",
+    "factory.app_access",
 )
 
 PASS = "pass"

@@ -19,6 +19,13 @@ repository ready:
   can hold a token that cannot reach the repository.
 - `factory.landing_known` 2026-08-09: `security-standards` was a factory target
   that App Brain had never assessed, and the refusal surfaced only in a dry run.
+- `factory.app_access`   the OTHER credential. Doing factory work needs two --
+  `FACTORY_PR_TOKEN` to check out, push and open the pull request, and the
+  "Alobar SDS Dispatch" App to fire `workflow_dispatch`, read the named check
+  and land it -- and until 2026-09-11 nothing anywhere checked the second. No
+  measured failure yet, which is the point: it has been survivable only because
+  `repository_selection: all` makes the App's reach constant, and "it has always
+  been true" is not a check.
 
 **Green does not mean dispatchable.** A repository passing all of these is
 proven not to fail in the ways this estate has already failed. It is not proven
@@ -30,9 +37,10 @@ behaves when GitHub refuses. An unmeasured capability is not a demonstrated
 one, so the fail-open of reporting `pass` without the credential is the one
 outcome this module must never produce.
 
-The fifth Q2 check, `runner.caller`, lives in `onboard_checks` because it was
-already built there; this module owns the four new ones plus the scope
-predicate they share.
+`runner.caller` is a Q2 check too and lives in `onboard_checks` because it was
+already built there; this module owns the five above plus the scope predicate
+they share. The App credential itself is handled in `dispatch_app`, which is the
+one place the private key is touched.
 """
 
 import json
@@ -43,6 +51,13 @@ import urllib.request
 
 from . import config
 from .checkers import _run
+from .dispatch_app import (
+    REPOSITORY_SELECTION_ALL,
+    REPOSITORY_SELECTION_SELECTED,
+    AppReach,
+    AppUnreadable,
+    memoizing_reach,
+)
 from .manifest import read_manifest
 from .matrix import NA, PASS, UNKNOWN, VIOLATION
 from .onboard_checks import (
@@ -59,7 +74,52 @@ FACTORY_CHECKS = (
     "factory.pat_scope",
     "factory.secrets",
     "factory.landing_known",
+    "factory.app_access",
 )
+
+# What the Dispatch App must be GRANTED for factory work to run, DERIVED FROM THE
+# ORCHESTRATOR'S CALL SITES rather than from anybody's summary. This is knowingly a
+# SECOND COPY of a fact that lives in another repository and no mechanism pins the
+# two together, so each member names the call it comes from and the copy is at
+# least readable:
+#
+#   actions: write        `services/dispatch.py` POST
+#                         /repos/{r}/actions/workflows/{w}/dispatches -- the act
+#                         that starts a run at all. Subsumes the `actions: read`
+#                         that `services/github_checks.py` needs to observe the
+#                         named check on a pull-request head.
+#   pull_requests: write  `services/pr_merge.py` and `services/estate_pr_merge.py`
+#                         PUT /repos/{r}/pulls/{n}/merge (reads of the pull request
+#                         need only `read`).
+#   contents: write       the SAME merge: a squash writes a commit to the base
+#                         branch, so `pull_requests: write` alone is not enough.
+#                         Measured 2026-08-09 -- that call answered 403 `Resource
+#                         not accessible by integration` on a pull request GitHub
+#                         itself called MERGEABLE/CLEAN, and 200 once `contents:
+#                         write` was added. Also covers `estate_pr_merge`'s reads
+#                         of /contents/{path} and /compare/{base}...{head}.
+#   workflows: write      `estate_pr_merge.update_branch` PUT
+#                         /repos/{r}/pulls/{n}/update-branch, and the landing that
+#                         follows it. The inert lane's population is Dependabot
+#                         github_actions bumps, whose heads touch
+#                         `.github/workflows/**`. Granted 2026-09-01 for exactly
+#                         this; its basis is the estate's record of why the grant
+#                         was made rather than an error string in the code, which
+#                         is the weakest basis of the five and is said so here.
+#   metadata: read        mandatory for every installation; every read above
+#                         depends on it.
+REQUIRED_APP_PERMISSIONS = {
+    "actions": "write",
+    "contents": "write",
+    "pull_requests": "write",
+    "workflows": "write",
+    "metadata": "read",
+}
+
+# GitHub's permission levels, ordered. Compared by RANK and never by string
+# equality: `admin` satisfies a need for `write`, and an equality test would
+# report a repository defective for holding MORE than it needs.
+_PERMISSION_RANK = {"none": 0, "read": 1, "write": 2, "admin": 3}
 
 # App Brain's answer vocabulary, mirrored from AlobarQuest/brain
 # `src/brains/app/models.py` and served by GET /api/apps/default-branch-landing.
@@ -136,7 +196,7 @@ def _credential_absent(check_id: str, env_name: str, purpose: str) -> dict:
         fix=(
             f"export {env_name} before running (the kit reads credentials from the "
             "environment and never fetches them); integrations/portfolio-scan.sh "
-            "supplies both for the nightly sweep"
+            "supplies them for the nightly sweep"
         ),
     )
 
@@ -542,18 +602,242 @@ def check_landing_known(repo, slug: str, fetch=None) -> dict:
     )
 
 
-def run_factory_checks(repo, slug: str, gh=_gh) -> list[dict]:
-    """The four Q2 capability checks, in `FACTORY_CHECKS` order.
+_APP_GREEN_CANNOT_SAY = (
+    "it does not establish that a merge would be ADMITTED: the installation holds "
+    "no `administration` permission, so whether branch protection would accept the "
+    "landing can only be learned by attempting it"
+)
 
-    `runner.caller` is the fifth Q2 check and is NOT here: it predates this
-    module and stays in `onboard_checks`, which is also where its Q1
+
+def _app_permission_findings(granted: dict[str, str]) -> tuple[list[str], list[str]]:
+    """(below what is needed, granted at a level this build cannot rank).
+
+    A permission GitHub reports with a value outside `_PERMISSION_RANK` is not a
+    violation -- it is this build failing to understand the answer, which is
+    `unknown`. Ranking it 0 would report a repository defective because GitHub
+    invented a word, and that is the fail-open's mirror image.
+    """
+    below: list[str] = []
+    unrankable: list[str] = []
+    for name, needed in sorted(REQUIRED_APP_PERMISSIONS.items()):
+        held = granted.get(name)
+        if held is not None and held not in _PERMISSION_RANK:
+            unrankable.append(f"{name}={held}")
+            continue
+        if _PERMISSION_RANK.get(held or "none", 0) < _PERMISSION_RANK[needed]:
+            below.append(f"{name} (need {needed}, granted {held or 'nothing'})")
+    return below, unrankable
+
+
+def _app_reach_finding(
+    reach: AppReach, slug: str
+) -> tuple[str, dict, str] | tuple[None, str, None]:
+    """Does the installation cover THIS repository? -> (status, detail, fix) or (None, where, None).
+
+    `repository_selection` is the discriminator and this branches on IT, never on
+    whether `repositories` holds anything. An empty set and an unrestricted grant
+    are opposite facts, and a reader keyed on absence turns "reaches everything"
+    into "reaches nothing".
+    """
+    if reach.repository_selection == REPOSITORY_SELECTION_ALL:
+        return None, f"granted every repository on the account, {slug} among them", None
+    if reach.repository_selection != REPOSITORY_SELECTION_SELECTED:
+        return (
+            UNKNOWN,
+            {
+                "id": "factory.app-selection-unrecognised",
+                "message": (
+                    "the installation reports a repository_selection this build does not "
+                    "recognise, so whether it reaches this repository was not measured"
+                ),
+            },
+            "read GET /app/installations/{id}.repository_selection by hand; this build knows "
+            f"only {REPOSITORY_SELECTION_ALL!r} and {REPOSITORY_SELECTION_SELECTED!r}",
+        )
+    if slug.lower() in (reach.repositories or frozenset()):
+        return None, f"repository-selected and includes {slug}", None
+    return (
+        VIOLATION,
+        {
+            "id": "factory.app-repo-not-granted",
+            "message": (
+                f"the Dispatch App installation is repository-selected and {slug} is not "
+                "among the repositories it was granted, so a dispatch, a check read and a "
+                "landing here would each fail"
+            ),
+        },
+        f"add {slug} to the Alobar SDS Dispatch installation's repository access on the "
+        "account that owns it (settings page; no API extends the list)",
+    )
+
+
+def check_app_access(repo, slug: str, reach=None) -> dict:
+    """Can the Dispatch App reach this repository, with the permissions the work needs?
+
+    **Doing factory work takes TWO credentials and only one of them was ever
+    checked.** `FACTORY_PR_TOKEN` checks out, pushes and opens the pull request,
+    and three checks here cover it. The App fires `workflow_dispatch` at the
+    caller, observes the named check, and lands the pull request -- and nothing
+    anywhere verified it. It survived because `repository_selection: all` makes
+    the App's reach an account-wide constant, which is a fact rather than a
+    check; a narrowing of that grant would stop dispatch per repository with
+    nothing having said so.
+
+    **The cheapness is a design property, not a bonus.** The answer comes from
+    ONE installation-level read shared across the whole sweep, not a probe per
+    repository, because `repository_selection` decides every repository's answer
+    at once. Under `selected` the repository list is enumerated instead, which
+    costs a down-scoped token (see `dispatch_app`).
+
+    Three states, and which is which is the binding clause of the Q2 spec. An
+    absent, wrong or unusable credential, an unreadable installation, and a
+    permission level this build cannot rank are all `unknown`: this check must
+    never report a repository defective because the operator's environment was
+    wrong. `violation` is reserved for facts about the installation that would
+    genuinely stop work here -- it is suspended, it does not reach this
+    repository, or it is granted less than the calls require.
+
+    **Reach and permissions are reported TOGETHER.** They are narrowed on the
+    same settings page, so one hiding the other costs a whole round trip to
+    discover the second. A measured violation also outranks an unmeasurable
+    term: an unrankable permission does not suppress the fact that the
+    installation provably does not reach this repository.
+
+    **Green is narrower than it reads.** It says the App is installed, active,
+    reaches this repository and holds the permission RANKS the orchestrator's
+    call sites need. It does not say a dispatch would succeed: the caller
+    workflow, the PAT's reach and what landing does are the other four checks,
+    and whether branch protection would admit the merge is unreadable to this
+    installation at all.
+    """
+    check_id = "factory.app_access"
+    if not in_q2_scope(repo):
+        return _out_of_scope(check_id)
+    answer = (reach or memoizing_reach())()
+    if not isinstance(answer, AppReach):
+        # Every way the reach could not be established, each carrying its own
+        # reason so a credential problem is never a verdict about the repository.
+        unreadable = (
+            answer
+            if isinstance(answer, AppUnreadable)
+            else AppUnreadable(
+                "factory.app-reach-unreadable",
+                "the App reach reader answered with a shape this check does not recognise",
+                "inspect the injected reach reader; it returned neither a reach nor a reason",
+            )
+        )
+        return _result(
+            check_id,
+            UNKNOWN,
+            details=[{"id": unreadable.detail_id, "message": unreadable.message}],
+            fix=unreadable.fix,
+        )
+
+    if answer.suspended:
+        # Total, so nothing below is worth reporting beside it: a suspended
+        # installation mints no token, whatever it is granted and wherever.
+        return _result(
+            check_id,
+            VIOLATION,
+            details=[
+                {
+                    "id": "factory.app-suspended",
+                    "message": (
+                        "the Dispatch App installation is SUSPENDED, so it can mint no token "
+                        "at all -- its permissions and its repository reach are intact and "
+                        "every dispatch, check read and landing would still fail"
+                    ),
+                }
+            ],
+            fix=(
+                "un-suspend the Alobar SDS Dispatch installation on the account that owns it "
+                "(settings page; no API does this), then re-run"
+            ),
+        )
+
+    violations: list[dict] = []
+    unknowns: list[dict] = []
+    fixes: list[str] = []
+
+    status, payload, fix = _app_reach_finding(answer, slug)
+    if status is None:
+        where = payload
+    else:
+        where = None
+        (violations if status == VIOLATION else unknowns).append(payload)
+        fixes.append(fix)
+
+    below, unrankable = _app_permission_findings(answer.permissions)
+    if below:
+        violations.append(
+            {
+                "id": "factory.app-permission-below-need",
+                "message": (
+                    "the Dispatch App installation is granted less than the orchestrator's "
+                    f"calls require: {'; '.join(below)}"
+                ),
+            }
+        )
+        fixes.append(
+            "grant the missing permission to the Alobar SDS Dispatch App AND accept it on the "
+            "installation -- the App's requested set and the installation's granted set are "
+            "different objects, and only the installation's is the credential. Verify with "
+            "GET /app/installations/{id}, never GET /app"
+        )
+    if unrankable:
+        unknowns.append(
+            {
+                "id": "factory.app-permission-unrankable",
+                "message": (
+                    "the installation reports permission levels this build cannot rank "
+                    f"({', '.join(unrankable)}), so whether it holds enough was not measured"
+                ),
+            }
+        )
+        fixes.append(
+            "read GET /app/installations/{id}.permissions by hand and teach _PERMISSION_RANK "
+            "the level GitHub reported"
+        )
+
+    if violations:
+        # A measured defect outranks an unmeasurable term, and the unmeasurable
+        # one still rides along rather than being dropped.
+        return _result(check_id, VIOLATION, details=violations + unknowns, fix="; ".join(fixes))
+    if unknowns:
+        return _result(check_id, UNKNOWN, details=unknowns, fix="; ".join(fixes))
+    return _result(
+        check_id,
+        PASS,
+        details=[
+            {
+                "id": "factory.app-can-reach",
+                "message": (
+                    f"the Dispatch App installation is active, {where}, and holds "
+                    f"{', '.join(f'{k}:{v}' for k, v in sorted(REQUIRED_APP_PERMISSIONS.items()))} "
+                    f"or better; {_GREEN_MEANS}, and {_APP_GREEN_CANNOT_SAY}"
+                ),
+            }
+        ],
+    )
+
+
+def run_factory_checks(repo, slug: str, gh=_gh, reach=None) -> list[dict]:
+    """The five Q2 capability checks in this module, in `FACTORY_CHECKS` order.
+
+    `runner.caller` is a Q2 check too and is NOT here: it predates this module
+    and stays in `onboard_checks`, which is also where its Q1
     `not-applicable` path belongs.
+
+    `reach` is threaded rather than defaulted inside `check_app_access` so a
+    SWEEP reads the App installation once for every repository instead of once
+    each; a single-repository caller can leave it alone.
     """
     return [
         check_pat_access(repo, slug),
         check_pat_scope(repo),
         check_secrets(repo, slug, gh=gh),
         check_landing_known(repo, slug),
+        check_app_access(repo, slug, reach=reach),
     ]
 
 
@@ -586,7 +870,7 @@ def memoizing_gh(gh=_gh):
     return cached
 
 
-def sweep(repos, gh=None) -> dict[str, list[dict]]:
+def sweep(repos, gh=None, reach=None) -> dict[str, list[dict]]:
     """Q2 for every repository IN SCOPE, keyed by path string.
 
     **Q2's answer changes without anyone touching the repository** -- a PAT
@@ -601,6 +885,16 @@ def sweep(repos, gh=None) -> dict[str, list[dict]]:
     repositories that declare a delivery profile (six today, not sixty-one).
     """
     gh = gh or memoizing_gh()
+    # One installation read for the whole sweep. The App's reach is an
+    # installation-level fact, so asking per repository is six identical round
+    # trips -- and, under a `selected` installation, six minted tokens.
+    #
+    # An INJECTED reader is memoized too, rather than passed through. Putting the
+    # memo in the default argument alone makes the property belong to the default
+    # rather than to `sweep`: any caller supplying its own reader would silently
+    # get one read per repository, which under a `selected` installation is one
+    # MINTED CREDENTIAL per repository. Found by the test that asserts it.
+    reach = memoizing_reach(reach) if reach is not None else memoizing_reach()
     results: dict[str, list[dict]] = {}
     for repo in repos:
         if not in_q2_scope(repo):
@@ -624,6 +918,6 @@ def sweep(repos, gh=None) -> dict[str, list[dict]]:
             continue
         results[str(repo)] = [
             check_runner_caller(repo, slug, gh=gh),
-            *run_factory_checks(repo, slug, gh=gh),
+            *run_factory_checks(repo, slug, gh=gh, reach=reach),
         ]
     return results

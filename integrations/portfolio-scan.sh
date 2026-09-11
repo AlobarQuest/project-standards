@@ -33,10 +33,21 @@ LOG="$HOME/.portfolio/scan.log"
 mkdir -p "$HOME/.portfolio"
 
 # --- Q2 factory-capability credentials -------------------------------------
-# FACTORY_PR_TOKEN and APP_BRAIN_READ_KEY let the nightly sweep answer "can the
-# factory reach this repository?" and "has the estate determined what landing on
-# it does?". Absent, those checks report `unknown` with a named reason — never
-# `pass` — so this block is optional and never fails the scan.
+# FACTORY_PR_TOKEN, APP_BRAIN_READ_KEY and DISPATCH_APP_PRIVATE_KEY_B64 let the
+# nightly sweep answer "can the factory reach this repository?", "has the estate
+# determined what landing on it does?" and "can the App that dispatches, reads the
+# named check and lands the pull request reach it?". Absent, those checks report
+# `unknown` with a named reason — never `pass` — so this block is optional and
+# never fails the scan.
+#
+# THE THIRD ONE IS NOT LIKE THE OTHER TWO AND THE DIFFERENCE IS WORTH READING.
+# The PAT and the brain key are tokens with a bounded reach. The App value is a
+# PRIVATE KEY, and a key mints installation access tokens across everything the
+# installation reaches — measured 2026-09-11: 75 repositories, 57 writable, with
+# `contents: write` and `workflows: write`. Adding it to this file is a real
+# expansion of what a 0600 plaintext file on this machine holds. It is here rather
+# than fetched for the same reason as the other two (below), and it is the one
+# value in it whose loss would matter beyond this estate.
 #
 # NEITHER THIS SCRIPT NOR THE KIT FETCHES FROM BWS, deliberately. A conformance
 # tool that reaches for secrets is a different security surface from one that
@@ -52,13 +63,14 @@ CREDENTIALS="$HOME/.portfolio/credentials.env"
 if [ -f "$CREDENTIALS" ]; then
   # shellcheck source=/dev/null
   . "$CREDENTIALS"
-  export FACTORY_PR_TOKEN APP_BRAIN_READ_KEY
+  export FACTORY_PR_TOKEN APP_BRAIN_READ_KEY DISPATCH_APP_PRIVATE_KEY_B64
 fi
 # Log WHICH credentials were present, never their values: an `unknown` in the
 # digest is otherwise indistinguishable from a broken check, and this line is
 # the difference between "nobody set the variable" and "the probe failed".
 creds="pat=$([ -n "${FACTORY_PR_TOKEN:-}" ] && echo yes || echo no)"
 creds="$creds brain=$([ -n "${APP_BRAIN_READ_KEY:-}" ] && echo yes || echo no)"
+creds="$creds app=$([ -n "${DISPATCH_APP_PRIVATE_KEY_B64:-}" ] && echo yes || echo no)"
 # ---------------------------------------------------------------------------
 
 ts="$(date '+%Y-%m-%d %H:%M:%S')"

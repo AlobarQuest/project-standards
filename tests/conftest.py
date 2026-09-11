@@ -63,3 +63,17 @@ def standards_env(monkeypatch, tmp_path):
         monkeypatch.setenv(env, str(repo))
         repos[std] = repo
     return repos
+
+
+@pytest.fixture(autouse=True)
+def _no_dispatch_app_key(monkeypatch):
+    """No test may read the real Dispatch App private key from the operator's shell.
+
+    `factory.app_access` reads its credential from the environment, so a
+    developer who has exported the live key would have the suite sign a JWT,
+    call GitHub, and — under a repository-selected installation — MINT A TOKEN.
+    A suite whose behaviour depends on whether a production private key happens
+    to be exported is not a suite. Scrubbed globally rather than per-test so a
+    future test cannot forget; every test that needs a reach injects one.
+    """
+    monkeypatch.delenv("DISPATCH_APP_PRIVATE_KEY_B64", raising=False)
