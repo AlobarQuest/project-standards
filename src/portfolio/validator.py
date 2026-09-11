@@ -3,6 +3,7 @@ from pathlib import Path
 
 from . import config
 from .detect import is_git
+from .factory_target import FactoryTargetError, factory_target_declaration
 from .manifest import parse_backlog, read_manifest
 from .schema import Finding, validate_frontmatter
 
@@ -21,6 +22,14 @@ def lint(repo: Path, today: date | None = None) -> list[Finding]:
             )
         ]
     findings = list(validate_frontmatter(m.frontmatter))
+    # The only loud place a malformed `factory-target.toml` surfaces outside an
+    # onboarding run. `runner.caller` reports it `unknown`, which fails
+    # admission but is only read by someone already running the kit against
+    # that repository; a FAIL here puts it in the nightly portfolio scan.
+    try:
+        factory_target_declaration(repo)
+    except FactoryTargetError as error:
+        findings.append(Finding("FAIL", "factory_target_invalid", f"{repo.name}: {error}"))
     tier = m.frontmatter.get("tier")
     if not is_git(repo):
         findings.append(

@@ -9,10 +9,6 @@ version_source: pyproject
 updated: '2026-07-02'
 foundation: true
 foundation_contract: 1
-factory_target: false
-factory_target_reason: ADR-0015 reaffirmed 2026-08-17 — maintained by a different
-  mechanism, beginning manual and automated over time; the 2026-08-07 amendment
-  admitting this repo was reversed and its caller workflow removed.
 applicable_standards:
   project: '1.0'
   security: '1.0'
