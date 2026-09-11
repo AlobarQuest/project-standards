@@ -629,10 +629,13 @@ def _app_permission_findings(granted: dict[str, str]) -> tuple[list[str], list[s
     return below, unrankable
 
 
-def _app_reach_finding(
-    reach: AppReach, slug: str
-) -> tuple[str, dict, str] | tuple[None, str, None]:
-    """Does the installation cover THIS repository? -> (status, detail, fix) or (None, where, None).
+def _app_reach_finding(reach: AppReach, slug: str) -> str | tuple[str, dict, str]:
+    """Does the installation cover THIS repository?
+
+    A plain string is the answer "yes, and here is the phrase for saying so"; a
+    triple is `(status, detail, fix)` for an answer that is not yes. One shape or
+    the other, rather than a triple with holes in it, so a caller cannot read a
+    missing element as an absent finding.
 
     `repository_selection` is the discriminator and this branches on IT, never on
     whether `repositories` holds anything. An empty set and an unrestricted grant
@@ -640,7 +643,7 @@ def _app_reach_finding(
     into "reaches nothing".
     """
     if reach.repository_selection == REPOSITORY_SELECTION_ALL:
-        return None, f"granted every repository on the account, {slug} among them", None
+        return f"granted every repository on the account, {slug} among them"
     if reach.repository_selection != REPOSITORY_SELECTION_SELECTED:
         return (
             UNKNOWN,
@@ -655,7 +658,7 @@ def _app_reach_finding(
             f"only {REPOSITORY_SELECTION_ALL!r} and {REPOSITORY_SELECTION_SELECTED!r}",
         )
     if slug.lower() in (reach.repositories or frozenset()):
-        return None, f"repository-selected and includes {slug}", None
+        return f"repository-selected and includes {slug}"
     return (
         VIOLATION,
         {
@@ -759,12 +762,11 @@ def check_app_access(repo, slug: str, reach=None) -> dict:
     unknowns: list[dict] = []
     fixes: list[str] = []
 
-    status, payload, fix = _app_reach_finding(answer, slug)
-    if status is None:
-        where = payload
-    else:
+    where = _app_reach_finding(answer, slug)
+    if not isinstance(where, str):
+        status, detail, fix = where
         where = None
-        (violations if status == VIOLATION else unknowns).append(payload)
+        (violations if status == VIOLATION else unknowns).append(detail)
         fixes.append(fix)
 
     below, unrankable = _app_permission_findings(answer.permissions)
