@@ -209,10 +209,17 @@ def _token_gh_read(token: str):
     turn "the PAT can reach this" into "somebody can reach this", the exact
     question the 2026-08-07 failure proved is different. The token never reaches
     argv (it would be visible in `ps`) and never reaches a result's details.
+
+    The App private key is dropped too. `gh` has no use for it, and it is the
+    most powerful value this kit accepts -- so wherever the kit builds a child's
+    environment itself, the key is not in it. That is a reduction and not a
+    closure: a `_run` call that passes no `env` inherits this process's, which
+    is what taking credentials from the environment means.
     """
 
     def gh_read(args: list[str]) -> tuple[str | None, str]:
-        env = {k: v for k, v in os.environ.items() if k != "GITHUB_TOKEN"}
+        withheld = {"GITHUB_TOKEN", config.DISPATCH_APP_KEY_ENV}
+        env = {k: v for k, v in os.environ.items() if k not in withheld}
         env["GH_TOKEN"] = token
         result = _run(["gh", *args], env=env)
         if result is None:

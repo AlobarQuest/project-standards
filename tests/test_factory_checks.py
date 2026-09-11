@@ -13,7 +13,7 @@ import subprocess
 
 import pytest
 
-from portfolio import config
+from portfolio import config, factory_checks
 from portfolio.dispatch_app import AppReach, AppUnreadable
 from portfolio.factory_checks import (
     FACTORY_CHECKS,
@@ -339,6 +339,23 @@ def test_the_landing_reader_never_raises(monkeypatch):
 
     for url in ("https://host..example/x", "https://" + "a" * 300 + ".example/x", "not-a-url", ""):
         assert _http_get_json(url, {}) is None
+
+
+def test_the_pat_reader_hands_gh_no_app_private_key(monkeypatch):
+    """`gh` has no use for it, and it is the most powerful value the kit accepts."""
+    seen = {}
+
+    def fake_run(cmd, env=None, **_k):
+        seen["env"] = env
+        return None
+
+    monkeypatch.setattr("portfolio.factory_checks._run", fake_run)
+    monkeypatch.setenv(config.DISPATCH_APP_KEY_ENV, "a-private-key")
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient")
+    factory_checks._token_gh_read("the-pat")(["api", "repos/o/r"])
+    assert config.DISPATCH_APP_KEY_ENV not in seen["env"]
+    assert "GITHUB_TOKEN" not in seen["env"]
+    assert seen["env"]["GH_TOKEN"] == "the-pat"
 
 
 # --------------------------------------------------------------------------
