@@ -147,10 +147,12 @@ def test_no_declaration_and_no_caller_is_not_applicable(tmp_path):
 
 def test_no_declaration_while_hosting_a_caller_is_a_violation(tmp_path):
     """`orchestrator`'s live shape as of 2026-09-11: it hosts a caller at the
-    pin and is not in the dispatch allowlist. Under absence-means-no that is
-    the same contradiction as an explicit `false` beside a caller -- the
-    repository is dispatchable and nothing says it is meant to be -- so it
-    reads the same way, and the MESSAGE names the absent file rather than a
+    pin and is not in the dispatch allowlist. Under absence-means-no it is
+    dispatchable while nothing says it is meant to be, which is a violation --
+    but NOT the same violation as an explicit `false` beside a caller. Those
+    two want opposite remedies, and the sibling test below is where that
+    difference is pinned; here the point is only that silence plus a caller is
+    reported at all, and that the message names the absent file rather than a
     declaration nobody wrote."""
     repo = _repo(tmp_path, caller=_caller(PIN), declaration=None)
     result = check_runner_caller(repo, "AlobarQuest/repo", gh=_fake_gh())
