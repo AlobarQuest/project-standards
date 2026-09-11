@@ -159,6 +159,37 @@ def test_no_declaration_while_hosting_a_caller_is_a_violation(tmp_path):
     assert "has no factory-target.toml" in result["details"][0]["message"]
 
 
+def test_silence_beside_a_caller_asks_for_a_declaration_rather_than_a_deletion(tmp_path):
+    """The two ways of not being a target want OPPOSITE remedies, and only the
+    message distinguished them at first.
+
+    A repository that DECLARED `false` and kept its caller has answered, so the
+    caller is the thing that is wrong -- delete it. A repository that declared
+    NOTHING has not answered, and the estate cannot know which way it goes, so
+    telling it to delete its caller de-onboards it on the strength of a file
+    nobody wrote. `remediation` is the half that matters: a failed admission
+    check with a payload becomes a `remediation_queue` item, and that queue is
+    the cross-repo contract `factory create --from-readiness` reads."""
+    silent = _repo(tmp_path / "silent", caller=_caller(PIN), declaration=None)
+    declared = _repo(
+        tmp_path / "declared",
+        caller=_caller(PIN),
+        declaration=DECLARATION.format(value="false", reason="decided, not defective"),
+    )
+    silent_result = check_runner_caller(silent, "AlobarQuest/repo", gh=_fake_gh())
+    declared_result = check_runner_caller(declared, "AlobarQuest/repo", gh=_fake_gh())
+
+    assert silent_result["status"] == declared_result["status"] == "violation"
+    assert silent_result["remediation"] == {
+        "summary": "declare whether this repository is a factory target"
+    }
+    assert declared_result["remediation"] == {
+        "summary": "remove the caller workflow from a declared non-target"
+    }
+    assert "delete" not in silent_result["fix"].split("or")[0]
+    assert declared_result["fix"].startswith("delete ")
+
+
 def test_declaring_non_target_while_hosting_a_caller_stays_a_violation(tmp_path):
     """The dangerous inverse: dispatchable but not intended. Q1 turns a Q2
     VIOLATION into not-applicable; it never turns a Q2 FAILURE into a pass, and

@@ -43,12 +43,23 @@ CAPABILITY_CHECKS = (
 )
 
 PASS = "pass"
-# ADR-0015: a repository that DECLARES itself not a factory target reads
-# `not-applicable` on `runner.caller`. That answer must satisfy admission, or the
-# declaration would merely rename the failure it exists to retire. The same
-# already applies to a check GitHub reports as unavailable on this plan. `unknown`
-# stays admission-failing: a check that could not see is not a check that found
+# ADR-0015: a repository that is not a factory target reads `not-applicable` on
+# `runner.caller`. That answer must satisfy admission, or the declaration would
+# merely rename the failure it exists to retire. The same already applies to a
+# check GitHub reports as unavailable on this plan. `unknown` stays
+# admission-failing: a check that could not see is not a check that found
 # nothing to object to.
+#
+# WIDENED 2026-09-11, and the widening moved what `admission_passed` MEANS for a
+# consumer of this document. It used to cover an explicit declaration only;
+# absence of `factory-target.toml` now means not a target too, so a repository
+# that has said nothing and hosts no caller is admission-clean where it used to
+# be a `violation` with a remediation item. So `admission_passed` no longer
+# implies the factory can reach a repository — it never quite did, since a
+# declared non-target has been admission-clean since 2026-08-17, but silence is
+# a much larger population than the two repositories that declared. Anything
+# choosing a dispatch target from this document (`factory create
+# --from-readiness`) must read `runner.caller`'s status, not `admission_passed`.
 ADMISSION_SATISFYING = (PASS, "not-applicable")
 
 

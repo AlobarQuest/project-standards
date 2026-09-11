@@ -433,26 +433,31 @@ def required_secrets(sha: str, gh=_gh) -> set[str] | None:
     return names or None
 
 
-def _not_a_factory_target(caller: Path, declared_reason: str | None) -> dict:
+def _not_a_factory_target(caller: Path, declared: bool, declared_reason: str | None) -> dict:
     """`runner.caller` for a repository that is not a factory target.
 
-    Two ways to be one, and the messages say which, because the fixes differ.
-    `declared_reason` is the repository's own words when `factory-target.toml`
-    says `factory_target = false`; it is None when there is no such file, and
-    absence means not a target (ADR-0015) rather than a question left open.
+    Two ways to be one, and every word here says which, because the two want
+    OPPOSITE remedies. `declared` is True when `factory-target.toml` exists and
+    says `factory_target = false`, in which case the repository has answered and
+    a caller contradicts it -- delete the caller. It is False when there is no
+    file at all: absence means not a target (ADR-0015), but it is silence rather
+    than a decision, so a caller means the question was never put and the remedy
+    is to answer it, in whichever direction. Telling that repository to delete
+    its caller would de-onboard it on the strength of a file nobody wrote.
 
-    No caller is then a DECISION, so it reads `not-applicable`. Still hosting
-    one is the dangerous inverse -- dispatchable but not intended -- so it stays
-    a violation: Q1 turns a Q2 violation into not-applicable, never a Q2 failure
-    into a pass. `project-standards` sat in that contradiction for ten days.
+    `declared` is passed rather than inferred from `declared_reason is not
+    None`. The inference happens to hold -- the reader raises unless a present
+    file carries a non-empty reason -- but it is an invariant of another module,
+    and the day the reason became optional this would report "no file" about a
+    repository that has one.
+
+    No caller is then a DECISION either way, so it reads `not-applicable`. Still
+    hosting one is the dangerous inverse -- dispatchable but not intended -- so
+    it stays a violation: Q1 turns a Q2 violation into not-applicable, never a
+    Q2 failure into a pass. `project-standards` sat in that contradiction for
+    ten days.
     """
-    declared = declared_reason is not None
-    if caller.is_file():
-        said = (
-            f"{DECLARATION_FILE} declares factory_target = false"
-            if declared
-            else f"the repository has no {DECLARATION_FILE}, and absence means not a target"
-        )
+    if caller.is_file() and declared:
         return _result(
             "runner.caller",
             VIOLATION,
@@ -460,17 +465,35 @@ def _not_a_factory_target(caller: Path, declared_reason: str | None) -> dict:
                 {
                     "id": "runner.caller-contradicts-declaration",
                     "message": (
-                        f"{said}, but the repository hosts factory-runner-pilot.yml, so it "
-                        "remains dispatchable against its own declaration"
+                        f"{DECLARATION_FILE} declares factory_target = false, but the "
+                        "repository hosts factory-runner-pilot.yml, so it remains "
+                        "dispatchable against its own declaration"
+                    ),
+                }
+            ],
+            fix=f"delete {caller} — the declaration is the decision",
+            remediation={"summary": "remove the caller workflow from a declared non-target"},
+        )
+    if caller.is_file():
+        return _result(
+            "runner.caller",
+            VIOLATION,
+            details=[
+                {
+                    "id": "runner.caller-contradicts-declaration",
+                    "message": (
+                        f"the repository has no {DECLARATION_FILE}, and absence means not a "
+                        "target, but it hosts factory-runner-pilot.yml, so it is dispatchable "
+                        "and nothing says it is meant to be"
                     ),
                 }
             ],
             fix=(
-                f"delete {caller} (the declaration is the decision), or declare "
-                f"`factory_target = true` with a reason in {DECLARATION_FILE} if the "
-                "repository is meant to be a target"
+                f"declare `factory_target = true` with a reason in {DECLARATION_FILE} if the "
+                f"repository is meant to be a target, or `factory_target = false` and delete "
+                f"{caller} if it is not"
             ),
-            remediation={"summary": "remove the caller workflow from a declared non-target"},
+            remediation={"summary": "declare whether this repository is a factory target"},
         )
     reason = declared_reason or (
         f"no {DECLARATION_FILE}, and absence means not a factory target (ADR-0015)"
@@ -525,7 +548,7 @@ def _runner_caller(repo: Path, slug: str, gh=_gh) -> dict:
     template = Path(__file__).parent / "templates" / "factory-runner-caller.yml"
     declared, declared_reason = factory_target_declaration(repo)
     if declared is False:
-        return _not_a_factory_target(caller, declared_reason)
+        return _not_a_factory_target(caller, (repo / DECLARATION_FILE).is_file(), declared_reason)
     if not caller.is_file():
         return _result(
             "runner.caller",
