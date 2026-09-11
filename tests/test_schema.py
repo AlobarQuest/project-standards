@@ -137,16 +137,20 @@ def test_bad_required_checks_fails(base_fm):
     assert "contract_error" in _codes(validate_frontmatter(fm))
 
 
-def test_factory_target_not_bool_is_bad_type():
-    """A quoted "false" reads as "nothing declared" everywhere downstream, so
-    without this FAIL a declaration could sit in the file and be inert in every
-    consumer (ADR-0015)."""
-    assert any(
-        f.code == "bad_type" and f.severity == "FAIL" and "factory_target" in f.message
-        for f in validate_frontmatter(_active(factory_target="false"))
-    )
+@pytest.mark.parametrize("key", ["factory_target", "factory_target_reason"])
+def test_a_leftover_factory_target_key_warns_that_it_moved(key):
+    """The declaration moved to `factory-target.toml` on 2026-09-11. Nothing
+    reads these keys any more, so one left behind is decoration that reads like
+    configuration -- somebody edits it and the estate does not change."""
+    findings = validate_frontmatter(_active(**{key: False if key == "factory_target" else "why"}))
+    assert [(f.severity, f.code) for f in findings] == [("WARN", "factory_target_moved")]
+    assert key in findings[0].message
 
 
-@pytest.mark.parametrize("declared", [True, False])
-def test_a_bool_factory_target_is_accepted(declared):
-    assert validate_frontmatter(_active(factory_target=declared)) == []
+def test_the_moved_key_warns_rather_than_fails():
+    """WARN, not FAIL, and the reason is mechanical: `project.manifest` is an
+    ADMISSION check whose status comes from `lint`'s FAILs, so a FAIL here
+    would fail admission for any checkout that had not yet pulled the removal.
+    A rot-guard that takes repositories out of admission is worse than the rot."""
+    findings = validate_frontmatter(_active(factory_target=True))
+    assert findings and all(f.severity == "WARN" for f in findings)
