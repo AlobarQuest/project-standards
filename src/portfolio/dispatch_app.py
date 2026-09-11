@@ -68,6 +68,10 @@ _TIMEOUT = 20.0
 _JWT_BACKDATE_S = 60
 _JWT_LIFETIME_S = 540
 
+# 100 repositories a page. A bound rather than an unbounded follow; exceeding it
+# is reported, never silently truncated.
+_MAX_REPOSITORY_PAGES = 20
+
 REPOSITORY_SELECTION_ALL = "all"
 REPOSITORY_SELECTION_SELECTED = "selected"
 
@@ -249,8 +253,9 @@ def _selected_repositories(jwt: str, installation_id: str) -> frozenset[str] | A
         )
     try:
         names: set[str] = set()
+        expected: int | None = None
         page = 1
-        while page <= 20:  # 100 per page; a bound rather than an unbounded follow
+        while page <= _MAX_REPOSITORY_PAGES:
             status, body = _api(f"/installation/repositories?per_page=100&page={page}", token)
             if status != 200 or not isinstance(body, dict):
                 return _unreadable(
@@ -259,6 +264,8 @@ def _selected_repositories(jwt: str, installation_id: str) -> frozenset[str] | A
                     f"could not be read (HTTP {status})",
                     "re-run; if it persists, read the installation's repository access by hand",
                 )
+            if expected is None and isinstance(body.get("total_count"), int):
+                expected = body["total_count"]
             batch = body.get("repositories")
             if not isinstance(batch, list) or not batch:
                 break
@@ -270,6 +277,22 @@ def _selected_repositories(jwt: str, installation_id: str) -> frozenset[str] | A
             if len(batch) < 100:
                 break
             page += 1
+        # A SHORT LIST IS NOT A SHORTER GRANT. The page bound, a name this build
+        # could not read, or a listing that simply stopped early all produce a set
+        # missing entries the installation does in fact reach -- and the caller
+        # turns a missing entry into `violation`, which is the one thing a
+        # measurement problem must never become. GitHub states the count, so the
+        # truncation is detectable rather than assumed.
+        if expected is None or len(names) != expected:
+            return _unreadable(
+                "factory.app-repositories-incomplete",
+                "the installation is repository-selected and its repository list came "
+                f"back incomplete ({len(names)} read against "
+                f"{'no stated total' if expected is None else expected}), so which "
+                "repositories it reaches was not measured",
+                "re-run; a list this long may exceed the page bound this build follows, in "
+                "which case raise _MAX_REPOSITORY_PAGES",
+            )
         return frozenset(names)
     finally:
         _api("/installation/token", token, method="DELETE")

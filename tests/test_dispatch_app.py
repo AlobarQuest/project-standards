@@ -205,7 +205,10 @@ def test_a_selected_installation_mints_a_metadata_only_token_and_revokes_it(
         if method == "DELETE":
             return 204, None
         if path.startswith("/installation/repositories"):
-            return 200, {"repositories": [{"full_name": "AlobarQuest/Orchestrator"}]}
+            return 200, {
+                "total_count": 1,
+                "repositories": [{"full_name": "AlobarQuest/Orchestrator"}],
+            }
         return 200, _SELECTED
 
     monkeypatch.setattr(dispatch_app, "_api", fake)
@@ -265,7 +268,7 @@ def test_a_selected_listing_follows_pages(rsa_key_b64, monkeypatch):
             return 204, None
         if path.startswith("/installation/repositories"):
             page = int(path.rsplit("page=", 1)[1])
-            return 200, {"repositories": pages.get(page, [])}
+            return 200, {"total_count": 101, "repositories": pages.get(page, [])}
         return 200, _SELECTED
 
     monkeypatch.setattr(dispatch_app, "_api", fake)
@@ -274,6 +277,50 @@ def test_a_selected_listing_follows_pages(rsa_key_b64, monkeypatch):
     assert answer.repositories is not None
     assert len(answer.repositories) == 101
     assert "o/last" in answer.repositories
+
+
+def test_a_listing_shorter_than_the_stated_total_is_a_reason_not_a_shorter_grant(
+    rsa_key_b64, monkeypatch
+):
+    """A SHORT LIST IS NOT A SHORTER GRANT, and the caller turns a missing entry into
+    `violation` — which is the one thing a measurement problem must never become.
+
+    GitHub states `total_count`, so a listing that stopped early, a page bound that
+    was hit, or a name this build could not read is DETECTABLE rather than assumed.
+    """
+
+    def fake(path, bearer, method="GET", body=None):
+        if method == "POST":
+            return 201, {"token": "ghs_x"}
+        if method == "DELETE":
+            return 204, None
+        if path.startswith("/installation/repositories"):
+            return 200, {"total_count": 9, "repositories": [{"full_name": "o/only"}]}
+        return 200, _SELECTED
+
+    monkeypatch.setattr(dispatch_app, "_api", fake)
+    answer = read_reach(private_key_b64=rsa_key_b64, app_id="1", installation_id="2")
+    assert isinstance(answer, AppUnreadable)
+    assert answer.detail_id == "factory.app-repositories-incomplete"
+
+
+def test_a_listing_with_no_stated_total_is_a_reason(rsa_key_b64, monkeypatch):
+    """Without the count there is nothing to check the listing against, so the
+    listing cannot be believed."""
+
+    def fake(path, bearer, method="GET", body=None):
+        if method == "POST":
+            return 201, {"token": "ghs_x"}
+        if method == "DELETE":
+            return 204, None
+        if path.startswith("/installation/repositories"):
+            return 200, {"repositories": [{"full_name": "o/only"}]}
+        return 200, _SELECTED
+
+    monkeypatch.setattr(dispatch_app, "_api", fake)
+    answer = read_reach(private_key_b64=rsa_key_b64, app_id="1", installation_id="2")
+    assert isinstance(answer, AppUnreadable)
+    assert answer.detail_id == "factory.app-repositories-incomplete"
 
 
 # --------------------------------------------------------------------------
