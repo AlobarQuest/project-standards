@@ -341,8 +341,32 @@ def test_the_landing_reader_never_raises(monkeypatch):
         assert _http_get_json(url, {}) is None
 
 
-def test_the_pat_reader_hands_gh_no_app_private_key(monkeypatch):
-    """`gh` has no use for it, and it is the most powerful value the kit accepts."""
+@pytest.mark.parametrize("explicit_env", [False, True])
+def test_no_child_this_kit_spawns_is_handed_the_app_private_key(monkeypatch, explicit_env):
+    """Scrubbed where children are CREATED, not at one call site.
+
+    `gh`, `git` and the security scanner all reach `checkers._run`, and a scrub
+    applied at one call site is a property of that call site rather than of the
+    kit — the next caller would not inherit it. Both branches are exercised
+    because the inherited-environment case is the one that used to leak.
+    """
+    from portfolio import checkers
+
+    seen = {}
+    monkeypatch.setattr(checkers.subprocess, "run", lambda _cmd, **kw: seen.update(kw) or "result")
+    monkeypatch.setenv(config.DISPATCH_APP_KEY_ENV, "a-private-key")
+    monkeypatch.setenv("HARMLESS_VAR", "kept")
+    checkers._run(
+        ["gh", "api", "x"],
+        env={"X": "1", config.DISPATCH_APP_KEY_ENV: "k"} if explicit_env else None,
+    )
+    assert config.DISPATCH_APP_KEY_ENV not in seen["env"]
+    assert seen["env"]["X" if explicit_env else "HARMLESS_VAR"] == ("1" if explicit_env else "kept")
+
+
+def test_the_pat_reader_still_withholds_an_ambient_github_token(monkeypatch):
+    """An ambient `GITHUB_TOKEN` answering in the PAT's place would turn "the PAT
+    can reach this" into "somebody can reach this"."""
     seen = {}
 
     def fake_run(cmd, env=None, **_k):
@@ -350,10 +374,8 @@ def test_the_pat_reader_hands_gh_no_app_private_key(monkeypatch):
         return None
 
     monkeypatch.setattr("portfolio.factory_checks._run", fake_run)
-    monkeypatch.setenv(config.DISPATCH_APP_KEY_ENV, "a-private-key")
     monkeypatch.setenv("GITHUB_TOKEN", "ambient")
     factory_checks._token_gh_read("the-pat")(["api", "repos/o/r"])
-    assert config.DISPATCH_APP_KEY_ENV not in seen["env"]
     assert "GITHUB_TOKEN" not in seen["env"]
     assert seen["env"]["GH_TOKEN"] == "the-pat"
 
@@ -538,7 +560,7 @@ def test_a_permission_level_this_build_cannot_rank_is_unknown_not_violation(make
     )
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.app-permission-unrankable"
-    assert "contents=superwrite" in result["details"][0]["message"]
+    assert "contents='superwrite'" in result["details"][0]["message"]
 
 
 def test_reach_and_permissions_are_reported_together(make_repo):
@@ -582,6 +604,32 @@ def test_a_suspended_installation_says_only_that(make_repo):
         reach=_reach(suspended=True, permissions={"metadata": "read"}),
     )
     assert [d["id"] for d in result["details"]] == ["factory.app-suspended"]
+
+
+def test_a_permission_value_of_an_unreadable_SHAPE_is_unknown_not_violation(make_repo):
+    """The finding a reviewer caught: dropping a non-string value made the checker see
+    nothing there, rank it `none`, and emit a violation reading "granted nothing" — a
+    verdict about the repository arising from a value this build could not read."""
+    result = check_app_access(
+        _scoped(make_repo),
+        "AlobarQuest/x",
+        reach=_reach(permissions={**GRANTED, "contents": {"level": "write"}}),
+    )
+    assert result["status"] == "unknown"
+    assert result["details"][0]["id"] == "factory.app-permission-unrankable"
+
+
+def test_a_subject_that_is_not_a_slug_is_unknown_not_a_violation(make_repo):
+    """`onboard` measures a repository with no GitHub origin under its bare directory
+    name. Matching that against an installation's grant would report the INSTALLATION
+    defective for a missing remote — a violation about the wrong subject entirely."""
+    result = check_app_access(
+        _scoped(make_repo),
+        "bare-directory-name",
+        reach=_reach(repository_selection="selected", repositories=frozenset({"o/r"})),
+    )
+    assert result["status"] == "unknown"
+    assert result["details"][0]["id"] == "factory.app-subject-not-a-slug"
 
 
 def test_an_out_of_scope_repo_never_reads_the_installation(make_repo):

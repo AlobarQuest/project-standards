@@ -12,7 +12,22 @@ from .validator import lint
 
 
 def _run(cmd, cwd=None, env=None, timeout=None):
+    """Every child this kit spawns, MINUS the App private key.
+
+    The kit takes three credentials from the environment, and children inherit
+    an environment. Two of them are scoped tokens; the third is a private key
+    that mints installation tokens across the account, and nothing the kit
+    shells out to -- `gh`, `git`, the security scanner -- has any use for it. So
+    it is withheld here, at the one place a child is created, rather than at a
+    call site: a scrub applied at one call site is a property of that call site
+    and not of the kit, and the next `_run` caller would not inherit it.
+    """
     timeout = timeout or config.checker_timeout()
+    env = {
+        k: v
+        for k, v in (os.environ if env is None else env).items()
+        if k != config.DISPATCH_APP_KEY_ENV
+    }
     try:
         return subprocess.run(
             cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout

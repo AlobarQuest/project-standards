@@ -210,16 +210,14 @@ def _token_gh_read(token: str):
     question the 2026-08-07 failure proved is different. The token never reaches
     argv (it would be visible in `ps`) and never reaches a result's details.
 
-    The App private key is dropped too. `gh` has no use for it, and it is the
-    most powerful value this kit accepts -- so wherever the kit builds a child's
-    environment itself, the key is not in it. That is a reduction and not a
-    closure: a `_run` call that passes no `env` inherits this process's, which
-    is what taking credentials from the environment means.
+    The App private key is withheld from every child, by `checkers._run` rather
+    than here -- `_gh`, `_gh_read` and the security scanner all spawn children
+    too, and a scrub applied at one call site is a property of that call site
+    rather than of the kit.
     """
 
     def gh_read(args: list[str]) -> tuple[str | None, str]:
-        withheld = {"GITHUB_TOKEN", config.DISPATCH_APP_KEY_ENV}
-        env = {k: v for k, v in os.environ.items() if k not in withheld}
+        env = {k: v for k, v in os.environ.items() if k != "GITHUB_TOKEN"}
         env["GH_TOKEN"] = token
         result = _run(["gh", *args], env=env)
         if result is None:
@@ -628,8 +626,8 @@ def _app_permission_findings(granted: dict[str, str]) -> tuple[list[str], list[s
     unrankable: list[str] = []
     for name, needed in sorted(REQUIRED_APP_PERMISSIONS.items()):
         held = granted.get(name)
-        if held is not None and held not in _PERMISSION_RANK:
-            unrankable.append(f"{name}={held}")
+        if held is not None and (not isinstance(held, str) or held not in _PERMISSION_RANK):
+            unrankable.append(f"{name}={held!r}")
             continue
         if _PERMISSION_RANK.get(held or "none", 0) < _PERMISSION_RANK[needed]:
             below.append(f"{name} (need {needed}, granted {held or 'nothing'})")
@@ -663,6 +661,23 @@ def _app_reach_finding(reach: AppReach, slug: str) -> str | tuple[str, dict, str
             },
             "read GET /app/installations/{id}.repository_selection by hand; this build knows "
             f"only {REPOSITORY_SELECTION_ALL!r} and {REPOSITORY_SELECTION_SELECTED!r}",
+        )
+    if "/" not in slug:
+        # `onboard` measures a repository with no GitHub origin under its bare
+        # directory name. That cannot be matched against an installation's grant,
+        # and matching it would report the INSTALLATION defective for a missing
+        # remote -- a violation about the wrong subject entirely.
+        return (
+            UNKNOWN,
+            {
+                "id": "factory.app-subject-not-a-slug",
+                "message": (
+                    f"{slug!r} is not an owner/name GitHub slug, so whether the "
+                    "repository-selected installation reaches it was not measured"
+                ),
+            },
+            f"give {slug} a GitHub origin remote; without one there is no repository "
+            "for an installation grant to name",
         )
     if slug.lower() in (reach.repositories or frozenset()):
         return f"repository-selected and includes {slug}"

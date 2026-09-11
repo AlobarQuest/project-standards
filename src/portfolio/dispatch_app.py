@@ -118,6 +118,20 @@ def _minimal_env() -> dict[str, str]:
     return {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
 
 
+def _reap(process: subprocess.Popen) -> None:
+    """Kill and WAIT. A kill alone leaves a zombie and three open pipes.
+
+    Reachable rather than theoretical: `openssl` exits immediately on a malformed
+    key, the write of the key then raises EPIPE, and a sweep that hit it once per
+    repository would leak a child and three descriptors each time.
+    """
+    process.kill()
+    try:
+        process.communicate(timeout=_TIMEOUT)
+    except (subprocess.SubprocessError, OSError):  # pragma: no cover - best effort
+        pass
+
+
 def _b64url(raw: bytes) -> bytes:
     return base64.urlsafe_b64encode(raw).rstrip(b"=")
 
@@ -149,14 +163,14 @@ def _sign_rs256(payload: bytes, private_key_pem: bytes) -> bytes | None:
     try:
         os.write(write_fd, private_key_pem)
     except OSError:
-        process.kill()
+        _reap(process)
         return None
     finally:
         os.close(write_fd)
     try:
         signature, _ = process.communicate(payload, timeout=_TIMEOUT)
     except (subprocess.SubprocessError, OSError):
-        process.kill()
+        _reap(process)
         return None
     # stderr is deliberately discarded rather than reported: openssl's message
     # for an unusable key quotes nothing of the key, but a future version's
@@ -192,10 +206,12 @@ def _app_jwt(private_key_b64: str, app_id: str, now: float | None = None) -> str
 def _api(path: str, bearer: str, method: str = "GET", body: dict | None = None):
     """One GitHub call, returning (status, parsed body). `(None, None)` for a transport failure.
 
-    `UnicodeError` is a `ValueError` and is what IDNA encoding raises for a
-    malformed host, so an environment-variable typo in an API base would
-    otherwise escape as a traceback from a module whose contract is to report
-    `unknown`.
+    The `ValueError` in the catch is NOT about a malformed host -- `GITHUB_API_URL`
+    is a constant with no override, so that path is unreachable by configuration.
+    What it reaches is `json.loads` on a 200 whose body is not JSON, which a proxy
+    or a captive portal will produce. That is a transport problem rather than a
+    credential one, so the caller must not be told to go and check its key: the
+    status is preserved and the parse failure reported as itself.
     """
     data = json.dumps(body).encode() if body is not None else None
     headers = {
@@ -212,11 +228,18 @@ def _api(path: str, bearer: str, method: str = "GET", body: dict | None = None):
     try:
         with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:  # noqa: S310
             raw = response.read().decode()
-            return response.status, (json.loads(raw) if raw.strip() else None)
+            status = response.status
     except urllib.error.HTTPError as error:
         return error.code, None
     except (urllib.error.URLError, OSError, ValueError):
         return None, None
+    try:
+        return status, (json.loads(raw) if raw.strip() else None)
+    except ValueError:
+        # The call SUCCEEDED and the body was not JSON. Keeping the status is what
+        # separates "something answered, and it was not GitHub" from "nothing
+        # answered", which want different remedies.
+        return status, None
 
 
 def _unreadable(detail_id: str, message: str, fix: str) -> AppUnreadable:
@@ -362,7 +385,12 @@ def read_reach(
             return listed
         repositories = listed
     return AppReach(
-        permissions={k: v for k, v in permissions.items() if isinstance(v, str)},
+        # Values are passed through AS THEY CAME, non-strings included. Dropping
+        # one made `_app_permission_findings` see nothing there, rank it `none`
+        # and emit a `violation` reading "granted nothing" -- a verdict about the
+        # repository arising from a value this build could not read, which is the
+        # one direction this module says it must never fail in.
+        permissions=dict(permissions),
         repository_selection=selection,
         suspended=body.get("suspended_at") is not None,
         repositories=repositories,

@@ -75,5 +75,11 @@ def _no_dispatch_app_key(monkeypatch):
     A suite whose behaviour depends on whether a production private key happens
     to be exported is not a suite. Scrubbed globally rather than per-test so a
     future test cannot forget; every test that needs a reach injects one.
+
+    The name comes from `config`, never spelled again here: a literal would be a
+    second copy, and renaming the variable would leave this guard silently
+    guarding nothing — in the fixture whose whole job is hermeticity.
     """
-    monkeypatch.delenv("DISPATCH_APP_PRIVATE_KEY_B64", raising=False)
+    from portfolio import config
+
+    monkeypatch.delenv(config.DISPATCH_APP_KEY_ENV, raising=False)
