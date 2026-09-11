@@ -97,6 +97,64 @@ def test_the_signer_reports_failure_rather_than_raising_when_openssl_is_absent(m
     assert dispatch_app._sign_rs256(b"payload", b"key") is None
 
 
+def test_a_permission_value_of_an_unreadable_shape_is_PASSED_THROUGH(rsa_key_b64, monkeypatch):
+    """Dropping it made the checker see nothing there and rank it `none`, which the
+    checker reports as "granted nothing" — a VIOLATION built from a value this build
+    could not read. `read_reach` is where that drop lived, so this is where it is
+    pinned; the checker's own test cannot see it, because it injects a reach."""
+    odd = {"permissions": {"contents": {"level": "write"}}, "repository_selection": "all"}
+    monkeypatch.setattr(dispatch_app, "_api", _api([(200, odd)]))
+    answer = read_reach(private_key_b64=rsa_key_b64, app_id="1", installation_id="2")
+    assert isinstance(answer, AppReach)
+    assert answer.permissions["contents"] == {"level": "write"}
+
+
+def test_a_200_whose_body_is_not_json_keeps_its_status(monkeypatch):
+    """A proxy or a captive portal answers 200 with HTML. Collapsing that to
+    `(None, None)` surfaced as "HTTP None" with fix text about 401 versus 404 —
+    pointing the operator at a credential problem for a transport one."""
+
+    class FakeResponse:
+        status = 200
+
+        def read(self):
+            return b"<html>captive portal</html>"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+    monkeypatch.setattr(dispatch_app.urllib.request, "urlopen", lambda *_a, **_k: FakeResponse())
+    assert dispatch_app._api("/x", "bearer") == (200, None)
+
+
+def test_the_openssl_child_is_reaped_and_not_merely_killed(monkeypatch):
+    """A kill alone leaves a zombie and three open pipes — once per repository in a
+    sweep, when openssl exits early on a malformed key and the write raises EPIPE."""
+    order = []
+
+    class FakeProc:
+        returncode = -9
+
+        def kill(self):
+            order.append("kill")
+
+        def communicate(self, *_a, **_k):
+            order.append("reap")
+            return b"", b""
+
+    monkeypatch.setattr(dispatch_app.subprocess, "Popen", lambda *_a, **_k: FakeProc())
+
+    def exploding_write(_fd, _data):
+        raise OSError("EPIPE")
+
+    monkeypatch.setattr(dispatch_app.os, "write", exploding_write)
+    assert dispatch_app._sign_rs256(b"payload", b"key") is None
+    assert order == ["kill", "reap"]
+
+
 # --------------------------------------------------------------------------
 # read_reach — every non-answer is a reason, never a verdict
 # --------------------------------------------------------------------------
