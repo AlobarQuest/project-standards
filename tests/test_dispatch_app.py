@@ -77,6 +77,14 @@ def test_the_key_reaches_neither_argv_nor_the_child_environment(rsa_key_b64, mon
     assert pem.decode() not in blob
     assert rsa_key_b64 not in blob
     assert "PRIVATE KEY" not in blob
+    # Not just the whole key: ANY run of it is key material, and a leak of a
+    # fragment is a leak. Sixteen characters is short enough that no plausible
+    # partial disclosure slips under it and long enough that a chunk of base64
+    # cannot collide with an argument by accident.
+    body = "".join(pem.decode().splitlines()[1:-1])
+    fragments = [body[i : i + 16] for i in range(0, len(body) - 16, 16)]
+    assert fragments, "the key body was not long enough to fragment"
+    assert not [f for f in fragments if f in blob]
     assert list(seen["env"]) == ["PATH"]
     assert config.DISPATCH_APP_KEY_ENV not in seen["env"]
 
