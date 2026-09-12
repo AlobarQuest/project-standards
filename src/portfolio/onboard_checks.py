@@ -439,7 +439,18 @@ def _remote_contents(slug: str, path: str, gh_read) -> tuple[str | None, str | N
             return None, repo_diagnostic.strip() or "gh produced no output"
         return None, None
     try:
-        return base64.b64decode(json.loads(raw)["content"]).decode(), None
+        body = json.loads(raw)
+        # `encoding` is checked rather than assumed. GitHub answers
+        # `{"content": "", "encoding": "none"}` for a file it declines to inline
+        # -- over a megabyte, and some symlink and submodule shapes -- which
+        # decodes to an empty string, i.e. a SUCCESS carrying no bytes. The
+        # caller then matches no `uses:` line and the repository is reported
+        # `runner.unpinned` because the server would not send the file. Before
+        # this check read the remote that was unreachable: an empty local file
+        # really was an empty file.
+        if body["encoding"] != "base64":
+            return None, f"{path} on {slug} came back {body['encoding']!r}-encoded, not inlined"
+        return base64.b64decode(body["content"]).decode(), None
     except (ValueError, KeyError, TypeError, UnicodeDecodeError) as error:
         # TypeError is the one that is not obvious: the contents endpoint answers
         # with a LIST for a directory, so a path that is one subscripts a list
@@ -573,7 +584,7 @@ def _not_a_factory_target(
     )
 
 
-def _unreachable(detail_id: str, what: str, slug: str, why: str) -> dict:
+def _unreachable(detail_id: str, what: str, why: str) -> dict:
     """A remote read that failed is `unknown` -- never `pass`, never `violation`.
 
     The capability-checks spec is binding here: a repository must never be
@@ -587,10 +598,23 @@ def _unreachable(detail_id: str, what: str, slug: str, why: str) -> dict:
         details=[
             {
                 "id": detail_id,
-                "message": f"cannot read {what} from {slug}: {why[:200]}",
+                # NO REPOSITORY NAME IN EITHER STRING. `render_factory` groups
+                # findings on (check id, message, fix) and lists the affected
+                # repositories on the group's own line, so a slug here would
+                # split one estate-wide cause into one paragraph per repository
+                # -- and an unreachable remote is now exactly the cause that
+                # hits every repository at once, where before only the pin read
+                # could. The diagnostic stays, capped: without it this is the
+                # bare symbol the capability-checks spec says a finding must
+                # never be, and `check_pat_access` sets the same precedent.
+                "message": f"cannot read {what} from the repository: {why[:200]}",
             }
         ],
-        fix=f"check `gh` auth and network, then re-run; {slug} was not readable",
+        fix=(
+            "read the message above and re-run. `gh` auth and the network are the usual "
+            "causes and are not the only ones -- a payload the server would not inline "
+            "arrives here too, and for that both are fine"
+        ),
     )
 
 
@@ -607,7 +631,16 @@ def check_runner_caller(repo: Path, slug: str, gh=_gh, gh_read=_gh_read) -> dict
     was wrong with any of them. The pin half is the same fault one file over:
     `brain` held `18f6355c` locally while its default branch held the declared
     pin. `check_git_current` is the check that is ALLOWED to care about the
-    working copy; this one is not.
+    working copy; this one is not. `work_carrier/declaration.py` reached the
+    same conclusion about the same file a day earlier, for the same reason; the
+    kit was simply not brought along.
+
+    Read that as a claim about the VERDICT and not about the row's existence.
+    `sweep` still decides WHICH repositories to measure from `in_q2_scope`,
+    which reads `delivery_profile` out of the local `PROJECT.md` -- so a
+    checkout stale enough to be missing the commit that declared a profile drops
+    out of the sweep entirely, silently, and this check never runs for it at
+    all. Same fault, one layer out, and not fixed here.
 
     **This is the one place Q2 reads Q1.** A caller workflow is the only thing
     that makes a repository dispatchable, so applied uniformly the check
@@ -620,6 +653,15 @@ def check_runner_caller(repo: Path, slug: str, gh=_gh, gh_read=_gh_read) -> dict
     deliberate silence of absence, so it is `unknown`, which never satisfies
     admission -- fail closed rather than guess either way. The translation lives
     out here so the reader can be read normally below.
+
+    **A declared NON-target now needs two successful reads to reach
+    `not-applicable`**, where the old local read settled it offline from the
+    declaration alone -- because whether it still hosts a caller is the other
+    half of that answer, and a repository that declares `false` and keeps its
+    caller is a violation. So an unreadable caller is `unknown` there too. That
+    is a cost, not an oversight: the alternative is to report `not-applicable`
+    without having looked, which is the fail-open for exactly the contradiction
+    `project-standards` sat in for ten days. Do not "fix" it back.
     """
     try:
         return _runner_caller(repo, slug, gh=gh, gh_read=gh_read)
@@ -636,7 +678,11 @@ def check_runner_caller(repo: Path, slug: str, gh=_gh, gh_read=_gh_read) -> dict
 
 
 def _runner_caller(repo: Path, slug: str, gh=_gh, gh_read=_gh_read) -> dict:
-    caller = repo / ".github" / "workflows" / "factory-runner-pilot.yml"
+    # One spelling of the file, used for the remote read AND for the local path
+    # the fix text hands a human. Two spellings is the failure `parse_declaration`
+    # was split out to avoid, one file over: change `CALLER_PATH` and a second
+    # literal goes on pointing at what the check no longer reads.
+    caller = repo / CALLER_PATH
     template = Path(__file__).parent / "templates" / "factory-runner-caller.yml"
 
     # The declaration is read FIRST and its unreadability beats everything: a
@@ -645,14 +691,14 @@ def _runner_caller(repo: Path, slug: str, gh=_gh, gh_read=_gh_read) -> dict:
     # whether it should be says nothing legible.
     declaration, why = _remote_contents(slug, DECLARATION_FILE, gh_read)
     if why is not None:
-        return _unreachable("runner.declaration-unreachable", DECLARATION_FILE, slug, why)
+        return _unreachable("runner.declaration-unreachable", DECLARATION_FILE, why)
     declared, declared_reason = (
         (False, None) if declaration is None else parse_declaration(declaration)
     )
 
     caller_text, caller_why = _remote_contents(slug, CALLER_PATH, gh_read)
     if caller_why is not None:
-        return _unreachable("runner.caller-unreachable", CALLER_PATH, slug, caller_why)
+        return _unreachable("runner.caller-unreachable", CALLER_PATH, caller_why)
 
     if declared is False:
         return _not_a_factory_target(
@@ -751,7 +797,22 @@ def _caller_conforms(caller_text: str, slug: str, gh) -> dict:
     try:
         have = {entry["name"] for entry in json.loads(listing)}
     except (ValueError, TypeError, KeyError):
-        have = set()
+        # An empty set here used to mean "every secret is missing", so a payload
+        # that did not parse reported the repository as missing all four -- a
+        # violation manufactured out of a read that established nothing, which
+        # is the one outcome this check must never produce. Pre-existing, and
+        # the same shape as the remote reads above.
+        return _result(
+            "runner.caller",
+            UNKNOWN,
+            details=[
+                {
+                    "id": "runner.secrets-unparseable",
+                    "message": "the secret listing did not parse, so the secrets were not read",
+                }
+            ],
+            fix="check `gh` and its output format, then re-run",
+        )
     missing = sorted(needed - have)
     if missing:
         return _result(

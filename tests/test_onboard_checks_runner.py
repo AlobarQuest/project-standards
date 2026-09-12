@@ -98,7 +98,8 @@ def _fake_remote(caller=None, declaration=TARGET, visible=True, fail_on=()):
         name = path[len(prefix) :]
         if name not in files:
             return None, NOT_FOUND
-        return json.dumps({"content": base64.b64encode(files[name].encode()).decode()}), ""
+        content = base64.b64encode(files[name].encode()).decode()
+        return json.dumps({"content": content, "encoding": "base64"}), ""
 
     return gh_read
 
@@ -159,7 +160,16 @@ def test_a_current_checkout_of_an_off_pin_repository_still_violates(tmp_path):
     """
     repo = _repo(tmp_path)
     (repo / ".github" / "workflows" / "factory-runner-pilot.yml").write_text(_caller(PIN))
-    (repo / "factory-target.toml").write_text(TARGET)
+    # The local declaration CONTRADICTS the remote's, deliberately. Writing the
+    # same text the fake remote serves is what the first version of this test
+    # did, and it cannot discriminate: a local-PREFERRED fallback -- the shape a
+    # future "be resilient offline" edit takes, rather than the total
+    # replacement a mutation run reaches for -- passed it. Contradicting the
+    # remote makes the two readings reach different verdicts, so only the remote
+    # one can produce the assertion below.
+    (repo / "factory-target.toml").write_text(
+        DECLARATION.format(value="false", reason="the working copy says the opposite")
+    )
     result = check_runner_caller(
         repo, SLUG, gh=_fake_gh(), gh_read=_fake_remote(caller=_caller("a" * 40))
     )
@@ -206,6 +216,24 @@ def test_missing_secret_fires_naming_it(tmp_path):
     assert "FACTORY_PR_TOKEN" in result["details"][0]["message"]
 
 
+def test_a_secret_listing_that_did_not_parse_is_unknown_not_four_missing_secrets(tmp_path):
+    """An empty set of names used to mean "every secret is missing".
+
+    So a listing that did not parse reported the repository as missing all four
+    — a violation manufactured out of a read that established nothing, which is
+    the shape the remote reads above were moved to avoid. Pre-existing; found by
+    the same review, and it is the same defect wearing `gh`'s other reader."""
+
+    def gh(args):
+        if args[:2] == ["secret", "list"]:
+            return "not json"
+        return _fake_gh()(args)
+
+    result = _check(tmp_path, caller=_caller(PIN), gh=gh)
+    assert result["status"] == "unknown"
+    assert result["details"][0]["id"] == "runner.secrets-unparseable"
+
+
 def test_conformant_caller_passes(tmp_path):
     assert _check(tmp_path, caller=_caller(PIN))["status"] == "pass"
 
@@ -244,32 +272,63 @@ def test_a_repository_this_reader_cannot_see_is_unknown_not_a_missing_caller(tmp
     workflow" about a repository whose caller the reader was simply not allowed
     to read, which is the spec's forbidden outcome wearing a plausible message.
     Every factory-adjacent repository is public today, so this branch does not
-    fire in the estate; that is why it is pinned here rather than measured."""
-    result = _check(tmp_path, caller=_caller(PIN), visible=False)
-    assert result["status"] == "unknown"
+    fire in the estate; that is why it is pinned here rather than measured.
+
+    Both reads are exercised and the DETAIL ID is asserted, because the first
+    version of this test asserted the status alone: an invisible repository
+    404s every path, so it returned at the declaration read and the caller
+    branch the test is named for never ran. The logic was covered either way --
+    `_remote_contents` is shared -- but the control was not measuring what it
+    said it was, which is the more dangerous half."""
+    invisible = _check(tmp_path / "all", caller=_caller(PIN), visible=False)
+    assert invisible["status"] == "unknown"
+    assert invisible["details"][0]["id"] == "runner.declaration-unreachable"
+
+    def hides_after_the_declaration(args):
+        path = args[-1]
+        if path.endswith("factory-target.toml"):
+            declared = base64.b64encode(TARGET.encode()).decode()
+            return json.dumps({"content": declared, "encoding": "base64"}), ""
+        return None, NOT_FOUND
+
+    caller_only = check_runner_caller(
+        _repo(tmp_path / "caller"), SLUG, gh=_fake_gh(), gh_read=hides_after_the_declaration
+    )
+    assert caller_only["status"] == "unknown"
+    assert caller_only["details"][0]["id"] == "runner.caller-unreachable"
 
 
-def test_content_that_does_not_decode_is_unknown_rather_than_an_absent_file(tmp_path):
+@pytest.mark.parametrize(
+    "body",
+    [
+        json.dumps({"content": "not base64 at all !!"}),  # a payload that is not content
+        json.dumps([{"name": "factory-runner-pilot.yml"}]),  # the path is a DIRECTORY
+        json.dumps({"sha": "abc"}),  # no content key at all
+        json.dumps({"content": "", "encoding": "none"}),  # the server declined to inline it
+    ],
+    ids=["undecodable", "directory-listing", "no-content-key", "not-inlined"],
+)
+def test_content_that_does_not_decode_is_unknown_rather_than_an_absent_file(tmp_path, body):
     """The last way an absence can be manufactured, and the one a mutation run
     found unpinned: GitHub answered, so there is no 404 and no diagnostic, but
     the payload did not decode. Reading that as "the file is not there" reports
     `runner.no-caller` about a repository that has one — the spec's forbidden
-    outcome reached through the success path rather than the failure path."""
+    outcome reached through the success path rather than the failure path.
+
+    The directory case is the one that used to raise rather than answer: the
+    contents endpoint returns a LIST for a directory, so subscripting it with a
+    string is a TypeError, and an uncaught one in `sweep` takes every
+    repository's answer with it."""
 
     def gh_read(args):
         if args[-1].endswith("factory-target.toml"):
-            return json.dumps({"content": base64.b64encode(TARGET.encode()).decode()}), ""
+            declared = base64.b64encode(TARGET.encode()).decode()
+            return json.dumps({"content": declared, "encoding": "base64"}), ""
         return body, ""
 
-    repo = _repo(tmp_path)
-    for body in (
-        json.dumps({"content": "not base64 at all !!"}),  # a payload that is not content
-        json.dumps([{"name": "factory-runner-pilot.yml"}]),  # the path is a DIRECTORY
-        json.dumps({"sha": "abc"}),  # no content key at all
-    ):
-        result = check_runner_caller(repo, SLUG, gh=_fake_gh(), gh_read=gh_read)
-        assert result["status"] == "unknown", body
-        assert result["details"][0]["id"] == "runner.caller-unreachable"
+    result = check_runner_caller(_repo(tmp_path), SLUG, gh=_fake_gh(), gh_read=gh_read)
+    assert result["status"] == "unknown"
+    assert result["details"][0]["id"] == "runner.caller-unreachable"
 
 
 def test_a_transient_failure_is_not_turned_into_an_absence_by_the_probe(tmp_path):
@@ -425,3 +484,11 @@ def test_an_unreadable_declaration_beats_the_caller_check(tmp_path):
     that decides whether it should be says nothing legible."""
     result = _check(tmp_path, caller=_caller(PIN), declaration="factory_target = 1\n")
     assert result["status"] == "unknown"
+    assert result["details"][0]["id"] == "runner.declaration-unreadable"
+
+    # And the ORDER is what is pinned, not merely the outcome. Both reads fail,
+    # in different ways: swap them and the caller's diagnostic answers first, so
+    # the assertion below moves. Without this the test passed under a swap,
+    # because a broken declaration still raises before the not-a-target branch.
+    both = _check(tmp_path / "both", declaration="factory_target = 1\n", fail_on=(CALLER_PATH,))
+    assert both["details"][0]["id"] == "runner.declaration-unreadable"
