@@ -428,6 +428,16 @@ def _remote_contents(slug: str, path: str, gh_read) -> tuple[str | None, str | N
     measured. Note the order: the diagnostic is tested for 404 FIRST, so a
     transient failure on the contents call cannot be turned into an absence by
     a repository probe that happens to succeed a moment later.
+
+    **THERE IS A SECOND READER OF THE SAME FACT, and it is named here so the two
+    cannot drift quietly.** orchestrator's `work_carrier/declaration.py` reads
+    `factory-target.toml` from the same default branch and follows the same
+    rule, ordering included. It is a RESTATEMENT rather than a shared module:
+    that program speaks `httpx` where this one shells `gh`, so there is no
+    transport to share, and an import across that boundary would be the first
+    dependency of its kind. What has to agree is the semantics -- a 404 is an
+    absence only when the repository itself answers -- so a change to this
+    paragraph is a change to that module too.
     """
     raw, diagnostic = gh_read(["api", f"repos/{slug}/contents/{path}"])
     if raw is None:
