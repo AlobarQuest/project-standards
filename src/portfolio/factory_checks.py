@@ -62,6 +62,7 @@ from .manifest import read_manifest
 from .matrix import NA, PASS, UNKNOWN, VIOLATION
 from .onboard_checks import (
     _gh,
+    _gh_read,
     _result,
     check_runner_caller,
     declared_pin,
@@ -894,7 +895,31 @@ def memoizing_gh(gh=_gh):
     return cached
 
 
-def sweep(repos, gh=None, reach=None) -> dict[str, list[dict]]:
+def memoizing_gh_read(gh_read=_gh_read):
+    """`memoizing_gh` for the reader that keeps its diagnostic.
+
+    Same rule and the same reason: identical read-only argv answers once per
+    sweep, and FAILURES ARE NOT CACHED, so one transient blip cannot unknown
+    every remaining repository for the night. It exists separately because the
+    two readers have different shapes -- this one returns (stdout, why) and the
+    `why` is what decides a verdict, so collapsing them would throw away the
+    distinction `runner.caller` was moved to the remote to gain.
+    """
+    cache: dict[tuple, tuple[str, str]] = {}
+
+    def cached(args: list[str]) -> tuple[str | None, str]:
+        key = tuple(args)
+        if key in cache:
+            return cache[key]
+        value, diagnostic = gh_read(args)
+        if value is not None:
+            cache[key] = (value, diagnostic)
+        return value, diagnostic
+
+    return cached
+
+
+def sweep(repos, gh=None, reach=None, gh_read=None) -> dict[str, list[dict]]:
     """Q2 for every repository IN SCOPE, keyed by path string.
 
     **Q2's answer changes without anyone touching the repository** -- a PAT
@@ -909,6 +934,7 @@ def sweep(repos, gh=None, reach=None) -> dict[str, list[dict]]:
     repositories that declare a delivery profile (six today, not sixty-one).
     """
     gh = gh or memoizing_gh()
+    gh_read = memoizing_gh_read(gh_read) if gh_read else memoizing_gh_read()
     # One installation read for the whole sweep. The App's reach is an
     # installation-level fact, so asking per repository is six identical round
     # trips -- and, under a `selected` installation, six minted tokens.
@@ -941,7 +967,7 @@ def sweep(repos, gh=None, reach=None) -> dict[str, list[dict]]:
             ]
             continue
         results[str(repo)] = [
-            check_runner_caller(repo, slug, gh=gh),
+            check_runner_caller(repo, slug, gh=gh, gh_read=gh_read),
             *run_factory_checks(repo, slug, gh=gh, reach=reach),
         ]
     return results
