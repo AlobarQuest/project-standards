@@ -259,11 +259,17 @@ def test_content_that_does_not_decode_is_unknown_rather_than_an_absent_file(tmp_
     def gh_read(args):
         if args[-1].endswith("factory-target.toml"):
             return json.dumps({"content": base64.b64encode(TARGET.encode()).decode()}), ""
-        return json.dumps({"content": "not base64 at all !!"}), ""
+        return body, ""
 
-    result = check_runner_caller(_repo(tmp_path), SLUG, gh=_fake_gh(), gh_read=gh_read)
-    assert result["status"] == "unknown"
-    assert result["details"][0]["id"] == "runner.caller-unreachable"
+    repo = _repo(tmp_path)
+    for body in (
+        json.dumps({"content": "not base64 at all !!"}),  # a payload that is not content
+        json.dumps([{"name": "factory-runner-pilot.yml"}]),  # the path is a DIRECTORY
+        json.dumps({"sha": "abc"}),  # no content key at all
+    ):
+        result = check_runner_caller(repo, SLUG, gh=_fake_gh(), gh_read=gh_read)
+        assert result["status"] == "unknown", body
+        assert result["details"][0]["id"] == "runner.caller-unreachable"
 
 
 def test_a_transient_failure_is_not_turned_into_an_absence_by_the_probe(tmp_path):

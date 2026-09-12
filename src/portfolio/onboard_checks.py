@@ -440,7 +440,11 @@ def _remote_contents(slug: str, path: str, gh_read) -> tuple[str | None, str | N
         return None, None
     try:
         return base64.b64decode(json.loads(raw)["content"]).decode(), None
-    except (ValueError, KeyError, UnicodeDecodeError) as error:
+    except (ValueError, KeyError, TypeError, UnicodeDecodeError) as error:
+        # TypeError is the one that is not obvious: the contents endpoint answers
+        # with a LIST for a directory, so a path that is one subscripts a list
+        # with a string. A crash here would take the whole nightly sweep with it,
+        # where a diagnostic only unknowns one repository.
         return None, f"{path} did not decode as text on {slug}: {error}"
 
 
