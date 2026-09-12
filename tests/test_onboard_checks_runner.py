@@ -249,6 +249,23 @@ def test_a_repository_this_reader_cannot_see_is_unknown_not_a_missing_caller(tmp
     assert result["status"] == "unknown"
 
 
+def test_content_that_does_not_decode_is_unknown_rather_than_an_absent_file(tmp_path):
+    """The last way an absence can be manufactured, and the one a mutation run
+    found unpinned: GitHub answered, so there is no 404 and no diagnostic, but
+    the payload did not decode. Reading that as "the file is not there" reports
+    `runner.no-caller` about a repository that has one — the spec's forbidden
+    outcome reached through the success path rather than the failure path."""
+
+    def gh_read(args):
+        if args[-1].endswith("factory-target.toml"):
+            return json.dumps({"content": base64.b64encode(TARGET.encode()).decode()}), ""
+        return json.dumps({"content": "not base64 at all !!"}), ""
+
+    result = check_runner_caller(_repo(tmp_path), SLUG, gh=_fake_gh(), gh_read=gh_read)
+    assert result["status"] == "unknown"
+    assert result["details"][0]["id"] == "runner.caller-unreachable"
+
+
 def test_a_transient_failure_is_not_turned_into_an_absence_by_the_probe(tmp_path):
     """The 404 test comes FIRST, before the repository probe.
 
