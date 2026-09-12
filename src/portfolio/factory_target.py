@@ -37,7 +37,12 @@ class FactoryTargetError(Exception):
 
 
 def factory_target_declaration(repo: Path) -> tuple[bool, str | None]:
-    """Return `(target, reason)`; `(False, None)` when no declaration file exists.
+    """Return `(target, reason)` for a WORKING COPY; `(False, None)` when absent.
+
+    `portfolio lint` reads the declaration this way because it lints the tree in
+    front of it. `runner.caller` does NOT: it asks whether the factory can be
+    sent work into a REPOSITORY, and a working copy three commits behind is not
+    that repository. It parses the remote bytes through `parse_declaration`.
 
     Raises `FactoryTargetError` when the file exists but is unparseable, is
     missing either key, or carries the wrong type for one.
@@ -46,8 +51,23 @@ def factory_target_declaration(repo: Path) -> tuple[bool, str | None]:
     if not path.is_file():
         return False, None
     try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise FactoryTargetError(f"{FILENAME} cannot be read: {error}") from error
+    return parse_declaration(text)
+
+
+def parse_declaration(text: str) -> tuple[bool, str | None]:
+    """Both keys out of the declaration's own bytes, wherever they came from.
+
+    Split out from the reader above so the remote and the local paths cannot
+    drift into two vocabularies for one file -- the failure this estate has now
+    met in four separate places, and the reason `runner.caller` can move its
+    read to the remote without acquiring a second parser.
+    """
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as error:
         raise FactoryTargetError(f"{FILENAME} cannot be read: {error}") from error
 
     target = data.get("factory_target")

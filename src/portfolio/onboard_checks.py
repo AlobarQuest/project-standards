@@ -24,7 +24,7 @@ from . import config
 from .checkers import _run, check_security
 from .contract import VERSIONED_STANDARDS, current_standard_versions
 from .factory_target import FILENAME as DECLARATION_FILE
-from .factory_target import FactoryTargetError, factory_target_declaration
+from .factory_target import FactoryTargetError, parse_declaration
 from .manifest import parse_frontmatter
 from .matrix import NA, PASS, UNKNOWN, VIOLATION
 from .validator import lint
@@ -404,6 +404,46 @@ def _gh_contents(slug_path: str, gh, ref: str | None = None) -> str | None:
         return None
 
 
+def _remote_contents(slug: str, path: str, gh_read) -> tuple[str | None, str | None]:
+    """A file's bytes from a repository's DEFAULT BRANCH, three-valued.
+
+    `(text, None)` the file is there; `(None, None)` the repository is readable
+    and the file is not; `(None, why)` the read failed. The three states are
+    distinguished without a sentinel: a diagnostic is present only when
+    something went wrong, so `why` alone answers "may I believe this".
+
+    The third state is the whole point, and `_gh_contents` cannot express it:
+    it collapses a 404 and a dead network into the same `None`, which is how a
+    check comes to report a repository defective because the operator's
+    environment was wrong. That is the fail-open the capability-checks spec
+    calls the one outcome that would make the whole set decorative.
+
+    **A contents 404 is itself ambiguous**, so it is confirmed rather than
+    believed: GitHub answers 404 for a file that is not there AND for a
+    repository this reader cannot see, and an unauthenticated `gh` against a
+    private repository takes the second path. So a 404 is followed by one read
+    of the repository itself, and only a repository that answers lets the
+    absence stand. Every factory-adjacent repository is public today, so this
+    branch does not fire -- which is exactly why it has to be right rather than
+    measured. Note the order: the diagnostic is tested for 404 FIRST, so a
+    transient failure on the contents call cannot be turned into an absence by
+    a repository probe that happens to succeed a moment later.
+    """
+    raw, diagnostic = gh_read(["api", f"repos/{slug}/contents/{path}"])
+    if raw is None:
+        lowered = diagnostic.lower()
+        if "not found" not in lowered and "http 404" not in lowered:
+            return None, diagnostic.strip() or "gh produced no output"
+        repo_raw, repo_diagnostic = gh_read(["api", f"repos/{slug}"])
+        if repo_raw is None:
+            return None, repo_diagnostic.strip() or "gh produced no output"
+        return None, None
+    try:
+        return base64.b64decode(json.loads(raw)["content"]).decode(), None
+    except (ValueError, KeyError, UnicodeDecodeError) as error:
+        return None, f"{path} did not decode as text on {slug}: {error}"
+
+
 def declared_pin(gh=_gh) -> str | None:
     """The caller pin factory-runner declares in RECOMMENDED_CALLER_PIN."""
     text = _gh_contents(f"{config.factory_runner_slug()}/contents/RECOMMENDED_CALLER_PIN", gh)
@@ -433,17 +473,23 @@ def required_secrets(sha: str, gh=_gh) -> set[str] | None:
     return names or None
 
 
-def _not_a_factory_target(caller: Path, declared: bool, declared_reason: str | None) -> dict:
+CALLER_PATH = ".github/workflows/factory-runner-pilot.yml"
+
+
+def _not_a_factory_target(
+    caller: Path, caller_present: bool, declared: bool, declared_reason: str | None
+) -> dict:
     """`runner.caller` for a repository that is not a factory target.
 
     Two ways to be one, and every word here says which, because the two want
-    OPPOSITE remedies. `declared` is True when `factory-target.toml` exists and
-    says `factory_target = false`, in which case the repository has answered and
-    a caller contradicts it -- delete the caller. It is False when there is no
-    file at all: absence means not a target (ADR-0015), but it is silence rather
-    than a decision, so a caller means the question was never put and the remedy
-    is to answer it, in whichever direction. Telling that repository to delete
-    its caller would de-onboard it on the strength of a file nobody wrote.
+    OPPOSITE remedies. `declared` is True when `factory-target.toml` is on the
+    default branch and says `factory_target = false`, in which case the
+    repository has answered and a caller contradicts it -- delete the caller. It
+    is False when there is no file at all: absence means not a target
+    (ADR-0015), but it is silence rather than a decision, so a caller means the
+    question was never put and the remedy is to answer it, in whichever
+    direction. Telling that repository to delete its caller would de-onboard it
+    on the strength of a file nobody wrote.
 
     `declared` is passed rather than inferred from `declared_reason is not
     None`. The inference happens to hold -- the reader raises unless a present
@@ -451,13 +497,18 @@ def _not_a_factory_target(caller: Path, declared: bool, declared_reason: str | N
     and the day the reason became optional this would report "no file" about a
     repository that has one.
 
+    `caller_present` likewise is the REMOTE's answer, while `caller` is the path
+    a human edits. Those are different facts about the same file and the fix
+    text needs the second, so both are passed rather than one derived from the
+    other.
+
     No caller is then a DECISION either way, so it reads `not-applicable`. Still
     hosting one is the dangerous inverse -- dispatchable but not intended -- so
     it stays a violation: Q1 turns a Q2 violation into not-applicable, never a
     Q2 failure into a pass. `project-standards` sat in that contradiction for
     ten days.
     """
-    if caller.is_file() and declared:
+    if caller_present and declared:
         return _result(
             "runner.caller",
             VIOLATION,
@@ -466,15 +517,15 @@ def _not_a_factory_target(caller: Path, declared: bool, declared_reason: str | N
                     "id": "runner.caller-contradicts-declaration",
                     "message": (
                         f"{DECLARATION_FILE} declares factory_target = false, but the "
-                        "repository hosts factory-runner-pilot.yml, so it remains "
-                        "dispatchable against its own declaration"
+                        "repository's default branch hosts factory-runner-pilot.yml, so it "
+                        "remains dispatchable against its own declaration"
                     ),
                 }
             ],
-            fix=f"delete {caller} — the declaration is the decision",
+            fix=f"delete {caller} and push — the declaration is the decision",
             remediation={"summary": "remove the caller workflow from a declared non-target"},
         )
-    if caller.is_file():
+    if caller_present:
         return _result(
             "runner.caller",
             VIOLATION,
@@ -482,9 +533,9 @@ def _not_a_factory_target(caller: Path, declared: bool, declared_reason: str | N
                 {
                     "id": "runner.caller-contradicts-declaration",
                     "message": (
-                        f"the repository has no {DECLARATION_FILE}, and absence means not a "
-                        "target, but it hosts factory-runner-pilot.yml, so it is dispatchable "
-                        "and nothing says it is meant to be"
+                        f"the repository's default branch has no {DECLARATION_FILE}, and "
+                        "absence means not a target, but it hosts factory-runner-pilot.yml, "
+                        "so it is dispatchable and nothing says it is meant to be"
                     ),
                 }
             ],
@@ -496,7 +547,8 @@ def _not_a_factory_target(caller: Path, declared: bool, declared_reason: str | N
             remediation={"summary": "declare whether this repository is a factory target"},
         )
     reason = declared_reason or (
-        f"no {DECLARATION_FILE}, and absence means not a factory target (ADR-0015)"
+        f"no {DECLARATION_FILE} on the default branch, and absence means not a factory "
+        "target (ADR-0015)"
     )
     return _result(
         "runner.caller",
@@ -517,8 +569,41 @@ def _not_a_factory_target(caller: Path, declared: bool, declared_reason: str | N
     )
 
 
-def check_runner_caller(repo: Path, slug: str, gh=_gh) -> dict:
+def _unreachable(detail_id: str, what: str, slug: str, why: str) -> dict:
+    """A remote read that failed is `unknown` -- never `pass`, never `violation`.
+
+    The capability-checks spec is binding here: a repository must never be
+    reported defective because the operator's environment was wrong, and
+    `unknown` never satisfies admission, so this fails closed in both
+    directions at once.
+    """
+    return _result(
+        "runner.caller",
+        UNKNOWN,
+        details=[
+            {
+                "id": detail_id,
+                "message": f"cannot read {what} from {slug}: {why[:200]}",
+            }
+        ],
+        fix=f"check `gh` auth and network, then re-run; {slug} was not readable",
+    )
+
+
+def check_runner_caller(repo: Path, slug: str, gh=_gh, gh_read=_gh_read) -> dict:
     """Can the factory send work INTO this repository? (Q2's fifth check.)
+
+    **Every fact this check judges comes from the REMOTE**, because the question
+    is about a repository and a working copy is not one. It used to read the
+    caller workflow and the declaration out of the local tree and compare them
+    against `RECOMMENDED_CALLER_PIN` fetched from GitHub -- local file, remote
+    pin, exact equality -- so a checkout that was merely behind reported a
+    repository defect. Measured 2026-09-12: three of the six repositories the
+    nightly sweep measures read `violation` for that reason alone, and nothing
+    was wrong with any of them. The pin half is the same fault one file over:
+    `brain` held `18f6355c` locally while its default branch held the declared
+    pin. `check_git_current` is the check that is ALLOWED to care about the
+    working copy; this one is not.
 
     **This is the one place Q2 reads Q1.** A caller workflow is the only thing
     that makes a repository dispatchable, so applied uniformly the check
@@ -527,39 +612,76 @@ def check_runner_caller(repo: Path, slug: str, gh=_gh) -> dict:
     scope question by satisfying a checklist (ADR-0015). See
     `_not_a_factory_target` for what a declaration may and may not do.
 
-    A declaration file that exists and cannot be read is neither an opt-in nor
-    the deliberate silence of absence, so it is `unknown`, which never
-    satisfies admission -- fail closed rather than guess either way. The
-    translation lives out here so the reader can be read normally below.
+    A declaration that exists and cannot be read is neither an opt-in nor the
+    deliberate silence of absence, so it is `unknown`, which never satisfies
+    admission -- fail closed rather than guess either way. The translation lives
+    out here so the reader can be read normally below.
     """
     try:
-        return _runner_caller(repo, slug, gh=gh)
+        return _runner_caller(repo, slug, gh=gh, gh_read=gh_read)
     except FactoryTargetError as error:
         return _result(
             "runner.caller",
             UNKNOWN,
             details=[{"id": "runner.declaration-unreadable", "message": str(error)}],
-            fix=f"fix {repo / DECLARATION_FILE}, or delete it if the repository is not a target",
+            fix=(
+                f"fix {DECLARATION_FILE} on {slug}'s default branch, or delete it if the "
+                "repository is not a target"
+            ),
         )
 
 
-def _runner_caller(repo: Path, slug: str, gh=_gh) -> dict:
+def _runner_caller(repo: Path, slug: str, gh=_gh, gh_read=_gh_read) -> dict:
     caller = repo / ".github" / "workflows" / "factory-runner-pilot.yml"
     template = Path(__file__).parent / "templates" / "factory-runner-caller.yml"
-    declared, declared_reason = factory_target_declaration(repo)
+
+    # The declaration is read FIRST and its unreadability beats everything: a
+    # conformant caller must not paper over a file nobody can read, which is the
+    # shape where a repository is dispatchable and the thing that decides
+    # whether it should be says nothing legible.
+    declaration, why = _remote_contents(slug, DECLARATION_FILE, gh_read)
+    if why is not None:
+        return _unreachable("runner.declaration-unreachable", DECLARATION_FILE, slug, why)
+    declared, declared_reason = (
+        (False, None) if declaration is None else parse_declaration(declaration)
+    )
+
+    caller_text, caller_why = _remote_contents(slug, CALLER_PATH, gh_read)
+    if caller_why is not None:
+        return _unreachable("runner.caller-unreachable", CALLER_PATH, slug, caller_why)
+
     if declared is False:
-        return _not_a_factory_target(caller, (repo / DECLARATION_FILE).is_file(), declared_reason)
-    if not caller.is_file():
+        return _not_a_factory_target(
+            caller, caller_text is not None, declaration is not None, declared_reason
+        )
+    if caller_text is None:
         return _result(
             "runner.caller",
             VIOLATION,
-            details=[{"id": "runner.no-caller", "message": "factory-runner-pilot.yml absent"}],
+            details=[
+                {
+                    "id": "runner.no-caller",
+                    "message": "factory-runner-pilot.yml absent from the default branch",
+                }
+            ],
             fix=(
-                f"copy {template} to {caller}, filling the pin from factory-runner's "
-                "RECOMMENDED_CALLER_PIN"
+                f"copy {template} to {caller} and push it, filling the pin from "
+                "factory-runner's RECOMMENDED_CALLER_PIN"
             ),
             remediation={"summary": "add the factory-runner caller workflow from the template"},
         )
+    return _caller_conforms(caller_text, slug, gh)
+
+
+def _caller_conforms(caller_text: str, slug: str, gh) -> dict:
+    """The caller a factory target DOES host, judged against factory-runner.
+
+    Split from `_runner_caller` because the two answer different questions and
+    the linter was right that one function was answering both: above is whether
+    the repository wants work and hosts a caller at all, here is whether the
+    caller it hosts would run. Both halves read the remote and nothing here
+    touches the working copy.
+    """
     pin = declared_pin(gh=gh)
     if pin is None:
         return _result(
@@ -573,7 +695,7 @@ def _runner_caller(repo: Path, slug: str, gh=_gh) -> dict:
             ],
             fix="check gh auth / that factory-runner declares RECOMMENDED_CALLER_PIN",
         )
-    match = _USES_RE.search(caller.read_text())
+    match = _USES_RE.search(caller_text)
     used = match.group(1) if match else None
     if used is None or not _SHA_RE.match(used):
         return _result(

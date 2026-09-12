@@ -66,7 +66,7 @@ def _run_checks(
         onboard_checks.check_code_onboarded(repo),
         onboard_checks.check_ci_executed(repo, gh=gh),
         onboard_checks.check_security_clean(repo),
-        onboard_checks.check_runner_caller(repo, slug, gh=gh),
+        onboard_checks.check_runner_caller(repo, slug, gh=gh, gh_read=gh_read),
         onboard_checks.check_profile_declared(repo, registered_profiles=registered),
         onboard_checks.check_dependabot(repo),
         onboard_checks.check_protection(slug, gh_read=gh_read),

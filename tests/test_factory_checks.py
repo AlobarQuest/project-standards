@@ -25,6 +25,7 @@ from portfolio.factory_checks import (
     check_secrets,
     in_q2_scope,
     memoizing_gh,
+    memoizing_gh_read,
     run_factory_checks,
     sweep,
 )
@@ -774,3 +775,67 @@ def test_memoizing_gh_does_not_cache_a_failure():
     cached = memoizing_gh(gh)
     assert cached(["api", "x"]) is None
     assert cached(["api", "x"]) == "value"
+
+
+def test_memoizing_gh_read_answers_identical_argv_once():
+    calls = []
+
+    def gh_read(args):
+        calls.append(list(args))
+        return "value", ""
+
+    cached = memoizing_gh_read(gh_read)
+    assert cached(["api", "x"]) == ("value", "")
+    assert cached(["api", "x"]) == ("value", "")
+    assert cached(["api", "y"]) == ("value", "")
+    assert calls == [["api", "x"], ["api", "y"]]
+
+
+def test_memoizing_gh_read_does_not_cache_a_failure():
+    """Same rule as `memoizing_gh`, and it matters more here: this reader's
+    diagnostic is what decides a verdict, so a cached failure would not merely
+    unknown the rest of the night — it would freeze one blip's diagnostic into
+    every subsequent answer."""
+    answers = [(None, "gh: connection reset\n"), ("value", "")]
+
+    def gh_read(_args):
+        return answers.pop(0)
+
+    cached = memoizing_gh_read(gh_read)
+    assert cached(["api", "x"])[0] is None
+    assert cached(["api", "x"]) == ("value", "")
+
+
+def test_a_sweep_reaches_the_remote_through_the_reader_it_was_given(make_repo, monkeypatch):
+    """`runner.caller` reads the repository's own files off GitHub since
+    2026-09-12, so `sweep` has to thread a `gh_read` as well as a `gh`. Without
+    this the default reader stays the real one: a caller injecting only a fake
+    `gh` would still spawn `gh` at the network, which is both a test that
+    touches the estate and a sweep whose reads nobody can redirect."""
+    repo = _scoped(make_repo, "a")
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/AlobarQuest/a.git"],
+        cwd=repo,
+        check=True,
+    )
+    for stub in ("check_pat_access", "check_pat_scope", "check_secrets", "check_landing_known"):
+        monkeypatch.setattr(
+            f"portfolio.factory_checks.{stub}",
+            lambda *_a, **_k: {"id": "x", "status": "pass", "details": [], "fix": None},
+        )
+    seen = []
+
+    def gh_read(args):
+        seen.append(args[-1])
+        return None, "gh: connection reset\n"
+
+    results = sweep(
+        [repo],
+        gh=_fake_gh(),
+        reach=lambda: AppReach(dict(GRANTED), "all", False, None),
+        gh_read=gh_read,
+    )
+
+    caller = next(c for c in results[str(repo)] if c["id"] == "runner.caller")
+    assert seen == ["repos/AlobarQuest/a/contents/factory-target.toml"]
+    assert caller["status"] == "unknown"  # never a defect pinned on the repository
