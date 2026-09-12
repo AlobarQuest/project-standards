@@ -23,6 +23,11 @@ SECRETS = [
 NOT_FOUND = "gh: Not Found (HTTP 404)\n"
 
 
+def _all_reads_fail(_args):
+    """The shape of a machine with no `gh`: one reason, every repository."""
+    return None, "gh produced no output"
+
+
 def _caller(pin):
     return (
         "name: Factory Runner Pilot\n"
@@ -261,6 +266,26 @@ def test_an_unreadable_remote_is_unknown_never_a_repository_defect(tmp_path, pat
     assert result["status"] == "unknown"
     assert result["details"][0]["id"].startswith("runner.")
     assert result["remediation"] is None
+
+
+def test_one_estate_wide_cause_is_one_finding_and_not_one_per_repository(tmp_path):
+    """`render_factory` groups findings on (check id, message, fix) and lists the
+    affected repositories on the group's own line, so a repository name inside
+    either string splits one cause into one paragraph per repository. An
+    unreachable remote is now exactly the cause that hits every repository at
+    once — before this change only the pin read could — so the estate's six
+    in-scope subjects would print six near-identical paragraphs a night, which
+    `_factory_finding_lines`' own docstring calls the noise version of the
+    bare-symbol problem it exists to correct."""
+    one = check_runner_caller(
+        _repo(tmp_path / "one"), "AlobarQuest/one", gh=_fake_gh(), gh_read=_all_reads_fail
+    )
+    two = check_runner_caller(
+        _repo(tmp_path / "two"), "AlobarQuest/two", gh=_fake_gh(), gh_read=_all_reads_fail
+    )
+    assert one["status"] == two["status"] == "unknown"
+    assert one["details"][0]["message"] == two["details"][0]["message"]
+    assert one["fix"] == two["fix"]
 
 
 def test_a_repository_this_reader_cannot_see_is_unknown_not_a_missing_caller(tmp_path):
