@@ -15,7 +15,7 @@ dev = ["pytest>=8.0"]
 dev = [
   "pytest>=8.0",
   "ruff==0.16.7",
-  "pyright==1.1.411",
+  "pyright==1.1.414",
 ]
 
 [project.scripts]
