@@ -67,7 +67,11 @@ def parse_declaration(text: str) -> tuple[bool, str | None]:
     """
     try:
         data = tomllib.loads(text)
-    except tomllib.TOMLDecodeError as error:
+    # `tomllib` parses recursively, so about 500 nested brackets raise
+    # `RecursionError`, which is not a `TOMLDecodeError`. The repository authors
+    # these bytes, and the orchestrator's two readers already answer "could not
+    # tell" for them (the shared case table holds all three to it).
+    except (tomllib.TOMLDecodeError, RecursionError) as error:
         raise FactoryTargetError(f"{FILENAME} cannot be read: {error}") from error
 
     target = data.get("factory_target")
