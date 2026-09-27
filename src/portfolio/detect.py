@@ -48,12 +48,6 @@ def detect_version(repo: Path) -> tuple[str, str]:  # noqa: C901
     return "n/a", "none"
 
 
-def detect_remote(repo: Path) -> str | None:
-    if not is_git(repo):
-        return None
-    return _git(repo, ["remote", "get-url", "origin"]) or None
-
-
 def detect_purpose(repo: Path) -> str | None:
     readme = repo / "README.md"
     if not readme.exists():
