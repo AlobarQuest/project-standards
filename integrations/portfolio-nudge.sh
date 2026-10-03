@@ -4,6 +4,10 @@
 set -euo pipefail
 REPO="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -z "$REPO" ] && exit 0
+# Sourced by absolute path: the deployed copy runs from ~/.claude/hooks, not from this directory.
+# shellcheck source=integrations/_python.sh
+. "$HOME/Projects/project-standards/integrations/_python.sh"
+PY_BIN="$(portfolio_python 2>/dev/null)" || exit 0
 OUT="$(PYTHONPATH="$HOME/Projects/project-standards/src" "$PY_BIN" -m portfolio lint "$REPO" 2>/dev/null || true)"
 if echo "$OUT" | grep -q "FAIL missing_manifest"; then
   echo "💡 portfolio: this repo has no PROJECT.md — run 'portfolio init .' to add one." >&2

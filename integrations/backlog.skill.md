@@ -8,7 +8,7 @@ description: Use when Devon says "put that on the backlog", "/backlog", "add to 
 For each item the user named, run once (from the repo's working directory so the project is inferred):
 
 ```bash
-PYTHONPATH="$HOME/Projects/project-standards/src" python3 -m portfolio add "<item text>" --priority <P1|P2|P3|omit>
+. "$HOME/Projects/project-standards/integrations/_python.sh" && PYTHONPATH="$HOME/Projects/project-standards/src" "$(portfolio_python)" -m portfolio add "<item text>" --priority <P1|P2|P3|omit>
 ```
 
 Rules:

@@ -8,14 +8,18 @@
 # that way unnoticed -- three successful runs in the whole log -- while the estate
 # relied on its output to report standards drift.
 #
-# Version-probing rather than a hardcoded path: a homebrew prefix is one machine's
-# answer, and `requires-python` is the package's own. Failing loudly rather than
-# falling back: a scan that runs under the wrong interpreter is a scan that reports
-# nothing while looking scheduled, which is the failure mode this whole file is about.
+# Version-probing rather than a hardcoded path: a homebrew prefix is one machine's answer, and
+# `requires-python` is the package's own. The one absolute candidate is this repository's own
+# venv, which has the package's dependencies whatever PATH says. The probe imports PyYAML as well
+# as checking the version: an interpreter of the right version without it dies at import, and the
+# Stop-hook nudge would fail silently. Failing loudly rather than falling back: a scan that runs
+# under the wrong interpreter is a scan that reports nothing while looking scheduled, which is the
+# failure mode this whole file is about.
 portfolio_python() {
   local min_major=3 min_minor=12 candidate
   for candidate in \
     "${PORTFOLIO_PYTHON:-}" \
+    "$HOME/Projects/project-standards/.venv/bin/python" \
     "$(command -v python3.13 2>/dev/null || true)" \
     "$(command -v python3.12 2>/dev/null || true)" \
     /opt/homebrew/bin/python3 \
@@ -25,7 +29,7 @@ portfolio_python() {
     if [ -z "$candidate" ] || [ ! -x "$candidate" ]; then
       continue
     fi
-    if "$candidate" -c "import sys; raise SystemExit(0 if sys.version_info >= ($min_major, $min_minor) else 1)" 2>/dev/null; then
+    if "$candidate" -c "import sys, yaml; raise SystemExit(0 if sys.version_info >= ($min_major, $min_minor) else 1)" 2>/dev/null; then
       printf '%s\n' "$candidate"
       return 0
     fi
