@@ -16,12 +16,11 @@
 # under the wrong interpreter is a scan that reports nothing while looking scheduled, which is the
 # failure mode this whole file is about.
 portfolio_python() {
-  local min_major=3 min_minor=12 candidate
+  local min_major=3 min_minor=14 candidate
   for candidate in \
     "${PORTFOLIO_PYTHON:-}" \
     "$HOME/Projects/project-standards/.venv/bin/python" \
-    "$(command -v python3.13 2>/dev/null || true)" \
-    "$(command -v python3.12 2>/dev/null || true)" \
+    "$(command -v python3.14 2>/dev/null || true)" \
     /opt/homebrew/bin/python3 \
     /usr/local/bin/python3 \
     "$(command -v python3 2>/dev/null || true)"

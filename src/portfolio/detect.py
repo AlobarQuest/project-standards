@@ -20,7 +20,7 @@ def detect_version(repo: Path) -> tuple[str, str]:  # noqa: C901
             v = parsed.get("version") if isinstance(parsed, dict) else None
             if v:
                 return str(v), "package.json"
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             pass
     pyproject = repo / "pyproject.toml"
     if pyproject.exists():
@@ -31,7 +31,7 @@ def detect_version(repo: Path) -> tuple[str, str]:  # noqa: C901
             ).get("version")
             if v:
                 return str(v), "pyproject"
-        except (tomllib.TOMLDecodeError, OSError):
+        except tomllib.TOMLDecodeError, OSError:
             pass
     cargo = repo / "Cargo.toml"
     if cargo.exists():
@@ -39,7 +39,7 @@ def detect_version(repo: Path) -> tuple[str, str]:  # noqa: C901
             v = tomllib.loads(cargo.read_text()).get("package", {}).get("version")
             if v:
                 return str(v), "cargo"
-        except (tomllib.TOMLDecodeError, OSError):
+        except tomllib.TOMLDecodeError, OSError:
             pass
     if is_git(repo):
         tag = _git(repo, ["describe", "--tags", "--abbrev=0"])
@@ -67,5 +67,5 @@ def _git(repo: Path, args: list[str]) -> str | None:
     try:
         out = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, timeout=5)
         return out.stdout.strip() if out.returncode == 0 else None
-    except (subprocess.SubprocessError, OSError):
+    except subprocess.SubprocessError, OSError:
         return None

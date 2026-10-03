@@ -32,7 +32,7 @@ def _run(cmd, cwd=None, env=None, timeout=None):
         return subprocess.run(
             cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout
         )
-    except (subprocess.SubprocessError, OSError):
+    except subprocess.SubprocessError, OSError:
         return None
 
 
@@ -60,7 +60,7 @@ def check_security(repo: Path) -> CheckResult:
 
     try:
         payload = json.loads(result.stdout)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         return CheckResult("security", UNKNOWN, note="security scanner output unreadable")
 
     summary = payload.get("summary") if isinstance(payload, dict) else None
@@ -189,7 +189,7 @@ def check_infra(  # noqa: C901
 
     try:
         data = json.loads(report_path.read_text())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    except OSError, UnicodeDecodeError, json.JSONDecodeError:
         return _all_infra_unknown(repo_resources, "infra report unreadable")
 
     if not isinstance(data, dict) or "generated_at" not in data or "instances" not in data:

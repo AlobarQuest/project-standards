@@ -28,7 +28,7 @@ def tree_clean(repo: Path) -> bool:
             ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, timeout=5
         )
         return out.returncode == 0 and out.stdout.strip() == ""
-    except (subprocess.SubprocessError, OSError):
+    except subprocess.SubprocessError, OSError:
         return False
 
 

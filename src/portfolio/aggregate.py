@@ -43,7 +43,7 @@ def _head_date(repo: Path) -> str | None:
             timeout=5,
         )
         return out.stdout.strip() or None if out.returncode == 0 else None
-    except (subprocess.SubprocessError, OSError):
+    except subprocess.SubprocessError, OSError:
         return None
 
 

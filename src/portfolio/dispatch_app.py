@@ -128,7 +128,7 @@ def _reap(process: subprocess.Popen) -> None:
     process.kill()
     try:
         process.communicate(timeout=_TIMEOUT)
-    except (subprocess.SubprocessError, OSError):  # pragma: no cover - best effort
+    except subprocess.SubprocessError, OSError:  # pragma: no cover - best effort
         pass
 
 
@@ -169,7 +169,7 @@ def _sign_rs256(payload: bytes, private_key_pem: bytes) -> bytes | None:
         os.close(write_fd)
     try:
         signature, _ = process.communicate(payload, timeout=_TIMEOUT)
-    except (subprocess.SubprocessError, OSError):
+    except subprocess.SubprocessError, OSError:
         _reap(process)
         return None
     # stderr is deliberately discarded rather than reported: openssl's message
@@ -182,7 +182,7 @@ def _app_jwt(private_key_b64: str, app_id: str, now: float | None = None) -> str
     """A signed App JWT, or None when the key cannot produce one."""
     try:
         pem = base64.b64decode("".join(private_key_b64.split()), validate=True)
-    except (binascii.Error, ValueError):
+    except binascii.Error, ValueError:
         return None
     issued = int(now if now is not None else time.time())
     header = _b64url(json.dumps({"alg": "RS256", "typ": "JWT"}, separators=(",", ":")).encode())
@@ -231,7 +231,7 @@ def _api(path: str, bearer: str, method: str = "GET", body: dict | None = None):
             status = response.status
     except urllib.error.HTTPError as error:
         return error.code, None
-    except (urllib.error.URLError, OSError, ValueError):
+    except urllib.error.URLError, OSError, ValueError:
         return None, None
     try:
         return status, (json.loads(raw) if raw.strip() else None)

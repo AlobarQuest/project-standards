@@ -39,7 +39,7 @@ def read_inbox() -> list[InboxItem]:
         try:  # [debate-fix] isolate bad lines
             d = json.loads(line)
             items[d["id"]] = InboxItem(**d)  # later status updates win
-        except (json.JSONDecodeError, TypeError, KeyError):
+        except json.JSONDecodeError, TypeError, KeyError:
             continue
     return list(items.values())
 
