@@ -32,7 +32,7 @@ existed=no; [ -f "$repo/PROJECT.md" ] && existed=yes
 
 # init (idempotent) + optionally set purpose; echoes OK or PLACEHOLDER
 apply() {
-  python3 - "$repo" "$tier" "$1" <<'PY'
+  "$PY_BIN" - "$repo" "$tier" "$1" <<'PY'
 import sys, os
 from pathlib import Path
 sys.path.insert(0, os.path.expanduser('~/Projects/project-standards/src'))
