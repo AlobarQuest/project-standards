@@ -313,7 +313,7 @@ def check_pat_access(repo, slug: str, token: str | None = None, gh_read=None) ->
     try:
         body = json.loads(raw)
         push = body["permissions"]["push"]
-    except (ValueError, TypeError, KeyError):
+    except ValueError, TypeError, KeyError:
         return _result(
             check_id,
             UNKNOWN,
@@ -470,7 +470,7 @@ def check_secrets(repo, slug: str, gh=_gh) -> dict:
         )
     try:
         have = {entry["name"] for entry in json.loads(listing)}
-    except (ValueError, TypeError, KeyError):
+    except ValueError, TypeError, KeyError:
         have = set()
     missing = sorted(needed - have)
     if missing:
@@ -518,7 +518,7 @@ def _http_get_json(url: str, headers: dict, timeout: float = 15.0):
             if response.status != 200:
                 return None
             return json.loads(response.read().decode())
-    except (urllib.error.URLError, OSError, ValueError):
+    except urllib.error.URLError, OSError, ValueError:
         return None
 
 

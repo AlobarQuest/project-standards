@@ -131,7 +131,7 @@ def _governance_registered(repo: Path) -> bool | None:
     map_path = config.security_standards_repo() / "governance-map.toml"
     try:
         parsed = tomllib.loads(map_path.read_text())
-    except (OSError, tomllib.TOMLDecodeError):
+    except OSError, tomllib.TOMLDecodeError:
         return None
     for entry in parsed.get("repo", []):
         if entry.get("name") == repo.name or Path(str(entry.get("path", ""))).name == repo.name:
@@ -400,7 +400,7 @@ def _gh_contents(slug_path: str, gh, ref: str | None = None) -> str | None:
     try:
         content = json.loads(raw)["content"]
         return base64.b64decode(content).decode()
-    except (ValueError, KeyError):
+    except ValueError, KeyError:
         return None
 
 
@@ -806,7 +806,7 @@ def _caller_conforms(caller_text: str, slug: str, gh) -> dict:
         )
     try:
         have = {entry["name"] for entry in json.loads(listing)}
-    except (ValueError, TypeError, KeyError):
+    except ValueError, TypeError, KeyError:
         # An empty set here used to mean "every secret is missing", so a payload
         # that did not parse reported the repository as missing all four -- a
         # violation manufactured out of a read that established nothing, which

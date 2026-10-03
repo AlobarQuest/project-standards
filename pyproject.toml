@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "portfolio"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
@@ -43,7 +43,7 @@ max-complexity = 10
 
 [tool.pyright]
 typeCheckingMode = "basic"
-pythonVersion = "3.12"
+pythonVersion = "3.14"
 reportMissingModuleSource = "none"
 exclude = [
   "**/node_modules",

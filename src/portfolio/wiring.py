@@ -63,7 +63,7 @@ def _verify_workflow(repo: Path, check_id: str, rest: str) -> dict | None:
     if job:
         try:
             data = yaml.safe_load(path.read_text())
-        except (OSError, yaml.YAMLError):
+        except OSError, yaml.YAMLError:
             return {
                 "id": "checks.not-wired",
                 "message": f"{check_id}: workflow {filename} unreadable",
@@ -116,7 +116,7 @@ def _verify_hook(check_id: str, name: str) -> dict | None:
     path = config.claude_settings_path()
     try:
         data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         return {
             "id": "checks.not-wired",
             "message": f"{check_id}: cannot read hook registrations in {path}",
