@@ -3,8 +3,16 @@ import json
 
 import pytest
 
+from portfolio import config
 from portfolio.matrix import PASS, UNKNOWN, VIOLATION
-from portfolio.sds_checks import check_branch_settings, check_cred_inventory, check_declaration
+from portfolio.sds_checks import (
+    EVIDENCE_PATH,
+    check_behavior_evidence,
+    check_branch_settings,
+    check_cred_inventory,
+    check_declaration,
+    check_landing_inert,
+)
 
 SLUG = "AlobarQuest/RentVSBuyGA"
 NOT_FOUND = "gh: Not Found (HTTP 404)\n"
@@ -293,3 +301,201 @@ def test_protection_is_read_for_the_default_branch():
 
     assert check_branch_settings(SLUG, gh_read=gh_read)["status"] == PASS
     assert f"repos/{SLUG}/branches/trunk/protection" in requested
+
+
+# --- behavior evidence ---------------------------------------------------
+
+GOOD_EVIDENCE = (
+    "serves_site = true\n"
+    'baseline_commit = "aaa111"\n'
+    'after_commit = "bbb222"\n'
+    'pages = ["/", "/results"]\n'
+    "unexplained_differences = []\n"
+)
+
+
+def _evidence(text, fail=()):
+    files = {} if text is None else {(SLUG, EVIDENCE_PATH): text}
+    return check_behavior_evidence(SLUG, gh_read=_serve(files, fail=fail))
+
+
+def _edit(old, new):
+    assert old in GOOD_EVIDENCE
+    return GOOD_EVIDENCE.replace(old, new)
+
+
+def test_good_evidence_passes():
+    assert _evidence(GOOD_EVIDENCE)["status"] == PASS
+
+
+def test_non_site_with_reason_passes():
+    text = (
+        "serves_site = false\n"
+        'baseline_commit = "a"\nafter_commit = "b"\n'
+        'reason = "a CLI, nothing to render"\n'
+        "unexplained_differences = []\n"
+    )
+    assert _evidence(text)["status"] == PASS
+
+
+def test_absent_evidence_is_violation():
+    out = _evidence(None)
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.evidence-absent"]
+    assert out["id"] == "sds.behavior_evidence"
+
+
+def test_unreadable_evidence_is_unknown():
+    out = _evidence(GOOD_EVIDENCE, fail=("contents",))
+    assert out["status"] == UNKNOWN
+    assert _ids(out) == ["sds.evidence-unreadable"]
+
+
+def test_unparseable_evidence_is_malformed():
+    out = _evidence("serves_site = [")
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.evidence-malformed"]
+
+
+@pytest.mark.parametrize("key", ["serves_site", "baseline_commit", "after_commit"])
+def test_missing_required_key_is_malformed_naming_it(key):
+    text = "\n".join(line for line in GOOD_EVIDENCE.splitlines() if not line.startswith(key))
+    out = _evidence(text)
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.evidence-malformed"]
+    assert key in out["details"][0]["message"]
+
+
+def test_missing_differences_key_is_malformed():
+    out = _evidence(_edit("unexplained_differences = []\n", ""))
+    assert _ids(out) == ["sds.evidence-malformed"]
+    assert "unexplained_differences" in out["details"][0]["message"]
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "key"),
+    [
+        ("serves_site = true", 'serves_site = "true"', "serves_site"),
+        ("serves_site = true", "serves_site = 1", "serves_site"),
+        ('baseline_commit = "aaa111"', "baseline_commit = 7", "baseline_commit"),
+        ('after_commit = "bbb222"', 'after_commit = ""', "after_commit"),
+        ('after_commit = "bbb222"', 'after_commit = "  "', "after_commit"),
+        ("unexplained_differences = []", 'unexplained_differences = "none"', "unexplained"),
+        ('pages = ["/", "/results"]', 'pages = "/"', "pages"),
+        ('pages = ["/", "/results"]', 'pages = ["/", 3]', "pages"),
+        ('pages = ["/", "/results"]', 'pages = ["/", ""]', "pages"),
+    ],
+)
+def test_wrongly_typed_field_is_malformed_naming_it(old, new, key):
+    out = _evidence(_edit(old, new))
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.evidence-malformed"]
+    assert key in out["details"][0]["message"]
+
+
+def test_site_without_pages_is_malformed():
+    out = _evidence(_edit('pages = ["/", "/results"]\n', ""))
+    assert _ids(out) == ["sds.evidence-malformed"]
+    assert "pages" in out["details"][0]["message"]
+
+
+def test_site_with_empty_pages_is_malformed():
+    out = _evidence(_edit('pages = ["/", "/results"]', "pages = []"))
+    assert _ids(out) == ["sds.evidence-malformed"]
+
+
+def test_non_site_needs_a_reason():
+    text = (
+        "serves_site = false\n"
+        'baseline_commit = "a"\nafter_commit = "b"\n'
+        "unexplained_differences = []\n"
+    )
+    out = _evidence(text)
+    assert _ids(out) == ["sds.evidence-malformed"]
+    assert "reason" in out["details"][0]["message"]
+
+
+def test_non_site_blank_reason_is_malformed():
+    text = (
+        "serves_site = false\n"
+        'baseline_commit = "a"\nafter_commit = "b"\nreason = " "\n'
+        "unexplained_differences = []\n"
+    )
+    assert _ids(_evidence(text)) == ["sds.evidence-malformed"]
+
+
+def test_each_problem_gets_its_own_detail():
+    text = "serves_site = true\nbaseline_commit = 1\nunexplained_differences = []\n"
+    out = _evidence(text)
+    assert len(out["details"]) == 3  # baseline_commit, after_commit, pages
+    assert {d["id"] for d in out["details"]} == {"sds.evidence-malformed"}
+
+
+def test_unexplained_differences_are_a_violation_listing_them():
+    out = _evidence(
+        _edit("unexplained_differences = []", 'unexplained_differences = ["/results header"]')
+    )
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.evidence-differences"]
+    assert "/results header" in out["details"][0]["message"]
+
+
+def test_differences_not_reported_when_file_is_malformed():
+    text = _edit("unexplained_differences = []", 'unexplained_differences = ["x"]')
+    text = text.replace('after_commit = "bbb222"', "after_commit = 3")
+    assert _ids(_evidence(text)) == ["sds.evidence-malformed"]
+
+
+# --- inert landing -------------------------------------------------------
+
+
+@pytest.fixture
+def brain_key(monkeypatch):
+    monkeypatch.setenv(config.APP_BRAIN_KEY_ENV, "test-brain-key")
+
+
+def _landing(answer):
+    seen = []
+
+    def fetch(slug):
+        seen.append(slug)
+        return answer
+
+    return check_landing_inert(SLUG, fetch=fetch), seen
+
+
+def test_inert_landing_passes(brain_key):
+    out, seen = _landing({"landing": "inert"})
+    assert out["status"] == PASS
+    assert out["id"] == "sds.landing_inert"
+    assert seen == [SLUG]
+
+
+def test_unrecorded_landing_is_violation(brain_key):
+    out, _ = _landing({"landing": "unknown", "reason": "not_assessed"})
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.landing-unrecorded"]
+
+
+def test_redeploying_landing_is_violation(brain_key):
+    out, _ = _landing({"landing": "redeploys"})
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.refused-redeploys"]
+
+
+@pytest.mark.parametrize(
+    "answer", [None, {}, {"landing": "bogus"}, {"landing": ["inert"]}, {"landing": None}, "inert"]
+)
+def test_no_usable_answer_is_unknown(brain_key, answer):
+    out, _ = _landing(answer)
+    assert out["status"] == UNKNOWN
+    assert _ids(out) == ["sds.landing-unreadable"]
+
+
+def test_missing_read_key_is_unknown_and_never_fetches(monkeypatch):
+    monkeypatch.delenv(config.APP_BRAIN_KEY_ENV, raising=False)
+    out, seen = _landing({"landing": "inert"})
+    assert out["status"] == UNKNOWN
+    assert out["id"] == "sds.landing_inert"
+    assert config.APP_BRAIN_KEY_ENV in out["details"][0]["message"]
+    assert seen == []

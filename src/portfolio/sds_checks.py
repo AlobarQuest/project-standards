@@ -8,6 +8,14 @@ being wrong says nothing about the repository.
 import json
 import tomllib
 
+from . import config
+from .factory_checks import (
+    LANDING_INERT,
+    LANDING_REDEPLOYS,
+    LANDING_UNKNOWN,
+    _credential_absent,
+    _landing_fetch,
+)
 from .factory_target import FactoryTargetError, parse_declaration
 from .matrix import PASS, UNKNOWN, VIOLATION
 from .onboard_checks import (
@@ -21,6 +29,9 @@ from .onboard_checks import (
 DECLARATION_CHECK = "sds.declaration"
 BRANCH_SETTINGS_CHECK = "sds.branch_settings"
 INVENTORY_CHECK = "sds.cred_inventory"
+EVIDENCE_CHECK = "sds.behavior_evidence"
+LANDING_CHECK = "sds.landing_inert"
+EVIDENCE_PATH = "docs/sds-readiness/evidence.toml"
 INVENTORY_FILE = ".cred-consumers.toml"
 DECLARATION_FILE = "factory-target.toml"
 
@@ -256,3 +267,143 @@ def check_branch_settings(slug: str, gh_read=_gh_read) -> dict:
             ),
         )
     return _result(BRANCH_SETTINGS_CHECK, PASS)
+
+
+def _evidence_result(status: str, details: list[dict]) -> dict:
+    return _result(
+        EVIDENCE_CHECK,
+        status,
+        details=details,
+        fix=(
+            f"write {EVIDENCE_PATH} on the default branch: serves_site, baseline_commit, "
+            "after_commit, unexplained_differences (empty), and pages (a site) or reason "
+            "(not a site)"
+        ),
+    )
+
+
+def _is_text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _evidence_problems(evidence: dict) -> list[str]:
+    """Every way `evidence` departs from the format; each message names its key."""
+    problems = []
+    serves_site = evidence.get("serves_site")
+    if not isinstance(serves_site, bool):
+        problems.append("serves_site is missing or not a boolean")
+    for key in ("baseline_commit", "after_commit"):
+        if not _is_text(evidence.get(key)):
+            problems.append(f"{key} is missing or not a non-empty string")
+    if not isinstance(evidence.get("unexplained_differences"), list):
+        problems.append("unexplained_differences is missing or not a list")
+    if serves_site is True:
+        pages = evidence.get("pages")
+        if not (isinstance(pages, list) and pages and all(_is_text(page) for page in pages)):
+            problems.append("pages is missing or not a non-empty list of non-empty strings")
+    elif serves_site is False and not _is_text(evidence.get("reason")):
+        problems.append("reason is missing or not a non-empty string (serves_site is false)")
+    return problems
+
+
+def check_behavior_evidence(slug: str, gh_read=_gh_read) -> dict:
+    """Did the readiness work leave behind evidence that behavior did not change?
+
+    The build agent writes the file in the target repository; this reads it from
+    the default branch. A file that is absent or does not follow the format is a
+    defect the build agent fixes, so it is a violation; a failed read says
+    nothing about the repository and is `unknown`.
+    """
+    text, why = _remote_contents(slug, EVIDENCE_PATH, gh_read)
+    if why is not None:
+        return _result(
+            EVIDENCE_CHECK,
+            UNKNOWN,
+            details=[
+                _detail("sds.evidence-unreadable", f"{EVIDENCE_PATH} could not be read: {why}")
+            ],
+        )
+    if text is None:
+        return _evidence_result(
+            VIOLATION, [_detail("sds.evidence-absent", f"{EVIDENCE_PATH} is absent")]
+        )
+    try:
+        evidence = tomllib.loads(text)
+    except (tomllib.TOMLDecodeError, RecursionError) as error:
+        return _evidence_result(
+            VIOLATION,
+            [_detail("sds.evidence-malformed", f"{EVIDENCE_PATH} does not parse: {error}")],
+        )
+    problems = _evidence_problems(evidence)
+    if problems:
+        return _evidence_result(
+            VIOLATION, [_detail("sds.evidence-malformed", problem) for problem in problems]
+        )
+    differences = evidence["unexplained_differences"]
+    if differences:
+        listed = "; ".join(str(difference) for difference in differences)
+        return _evidence_result(
+            VIOLATION,
+            [_detail("sds.evidence-differences", f"unexplained differences: {listed}")],
+        )
+    return _result(EVIDENCE_CHECK, PASS)
+
+
+def check_landing_inert(slug: str, fetch=None) -> dict:
+    """Does App Brain say landing on the default branch is inert?
+
+    Asked the way `check_landing_known` asks it. A readiness target must be
+    inert: an unrecorded landing cannot be trusted and a redeploying one is
+    refused for the first factory run.
+    """
+    key = config.app_brain_read_key()
+    if not key:
+        return _credential_absent(
+            LANDING_CHECK, config.APP_BRAIN_KEY_ENV, "what landing on this repository does"
+        )
+    fetch = fetch or (lambda s: _landing_fetch(s, config.app_brain_url(), key))
+    body = fetch(slug)
+    landing = body.get("landing") if isinstance(body, dict) else None
+    if landing not in (LANDING_INERT, LANDING_REDEPLOYS, LANDING_UNKNOWN):
+        return _result(
+            LANDING_CHECK,
+            UNKNOWN,
+            details=[
+                _detail(
+                    "sds.landing-unreadable",
+                    "App Brain did not answer with a landing value this build recognises",
+                )
+            ],
+            fix=(
+                f"check that {config.app_brain_url()} is reachable and that "
+                f"${config.APP_BRAIN_KEY_ENV} is the read-only key, then re-run"
+            ),
+        )
+    if landing == LANDING_UNKNOWN:
+        return _result(
+            LANDING_CHECK,
+            VIOLATION,
+            details=[
+                _detail(
+                    "sds.landing-unrecorded",
+                    f"App Brain has not determined what landing on {slug} does",
+                )
+            ],
+            fix=(
+                f"determine what landing on {slug}'s default branch does and record it in App Brain"
+            ),
+        )
+    if landing == LANDING_REDEPLOYS:
+        return _result(
+            LANDING_CHECK,
+            VIOLATION,
+            details=[
+                _detail(
+                    "sds.refused-redeploys",
+                    f"landing on {slug} redeploys a running service; the first factory "
+                    "target must be inert",
+                )
+            ],
+            fix="choose a repository whose default-branch landing is inert",
+        )
+    return _result(LANDING_CHECK, PASS)
