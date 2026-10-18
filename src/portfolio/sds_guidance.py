@@ -50,8 +50,16 @@ _IDEMPOTENT = (
     "action is idempotent and a rerun resumes where the last run stopped."
 )
 
+# The onboarding design's two anti-goals, verbatim: if either happens, the
+# process has failed even when every check passes.
 ANTI_GOAL_1 = (
     "Readiness work breaks the functionality or appearance of a website the repository serves."
+)
+ANTI_GOAL_2 = "Once onboarded, SDS doesn't work with the repository."
+
+SECURITY_SCAN_COMMAND = (
+    'PYTHONPATH="$HOME/Projects/security-standards/src" '
+    "~/Projects/security-standards/.venv/bin/python -m security_scan.cli . --category security"
 )
 
 GUIDANCE: dict[str, Guidance] = {
@@ -143,12 +151,10 @@ GUIDANCE: dict[str, Guidance] = {
             "`governance-map.toml` has a `[[repo]]` entry for it."
         ),
         how=(
-            "From the repository root run "
-            '`PYTHONPATH="$HOME/Projects/security-standards/src" '
-            "~/Projects/security-standards/.venv/bin/python -m security_scan.cli . "
-            "--category security` and clear every BLOCK. Treat a token found in a tracked file "
-            "or in git history as leaked: report it to Devon for rotation, because deleting it "
-            "is not enough. If the repository uses BWS, generate the manifest with "
+            f"From the repository root run `{SECURITY_SCAN_COMMAND}` and clear every BLOCK. "
+            "Treat a token found in a tracked file or in git history as leaked: report it to "
+            "Devon for rotation, because deleting it is not enough. If the repository uses BWS, "
+            "generate the manifest with "
             "`security_scan.genmanifest <repo> --write` (same interpreter and PYTHONPATH) and add "
             "a `[[repo]]` consumer entry to security-standards' `governance-map.toml`, then run "
             "`make ownership` there. Never write a secret value into any file."
