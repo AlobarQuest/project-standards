@@ -2,8 +2,11 @@
 
 Each renderer reads only its `RepoFacts`, the `Verdict` and the shared guidance
 text, and lists checks in the Verdict's order, so identical inputs give
-byte-identical output. A check's own `fix` string is never rendered: the
-guidance is the single voice for what to do.
+byte-identical output. The handoff and the task list never render a check's own
+`fix` string: the guidance is the single voice for what to do. The summary's
+environment section is the exception: there a check's `fix` names the
+environment problem (a missing credential, an unauthenticated `gh`) that kept
+it from measuring, which the guidance does not cover.
 """
 
 import textwrap
@@ -17,6 +20,9 @@ from .sds_guidance import ANTI_GOAL_1, ANTI_GOAL_2, GUIDANCE, SECURITY_SCAN_COMM
 
 HANDOFF_FILE = "HANDOFF.md"
 TASKS_FILE = "TASKS.md"
+
+# `portfolio` is not on PATH; the project-standards checkout's venv carries it.
+PORTFOLIO_COMMAND = "~/Projects/project-standards/.venv/bin/portfolio"
 
 
 @dataclass(frozen=True)
@@ -64,6 +70,7 @@ def _check_section(check: dict, heading: str) -> list[str]:
 def render_handoff(facts: RepoFacts, verdict: Verdict) -> str:
     """The build handoff: everything a build agent with no other context needs."""
     tooling = ", ".join(f"`{name}`" for name in facts.tooling) or "none found"
+    branch = facts.default_branch
     lines = [
         f"# Make {facts.name} ready for SDS",
         "",
@@ -82,6 +89,9 @@ def render_handoff(facts: RepoFacts, verdict: Verdict) -> str:
         f"- Manifest files at the checkout root: {tooling}",
         f"- Behavior evidence: `{EVIDENCE_PATH}` records the before-and-after comparison of what "
         "the repository serves.",
+        "",
+        "In the instructions below, `<repo>` and `<checkout>` mean the checkout path above, and "
+        f"`portfolio` means `{PORTFOLIO_COMMAND}`.",
         "",
         "## Repository work",
         "",
@@ -115,13 +125,27 @@ def render_handoff(facts: RepoFacts, verdict: Verdict) -> str:
         "Never deploy anything. Onboarding never deploys, and the readiness work does not "
         "either: capture behavior from local builds only.",
         "",
+        "No difference in what the repository serves is intended: this handoff names none, so "
+        "every difference you find is unexplained.",
+        "",
         "## Rerun and what clean looks like",
         "",
-        "From the checkout, run:",
+        "Work on a branch in the checkout. When your work is done:",
+        "",
+        "1. Open a pull request.",
+        "2. Merge it once the repository's Quality job passes on it and the evidence file "
+        "records no unexplained differences.",
+        f"3. Check out `{branch}` and pull: `git -C {facts.checkout} checkout {branch} && "
+        f"git -C {facts.checkout} pull --ff-only origin {branch}`.",
+        f"4. Wait for the Quality run on `{branch}` to finish green.",
+        "5. Only then rerun the readiness command:",
         "",
         "```bash",
-        f"portfolio sds-ready {facts.checkout}",
+        f"{PORTFOLIO_COMMAND} sds-ready {facts.checkout}",
         "```",
+        "",
+        "`git.current` and `ci.executed` can pass only after this sequence, so a violation on "
+        "either before the merge is expected.",
         "",
         "Clean means its summary has no repository-work line. Devon's tasks, environment "
         "problems and onboarding actions can still appear; they are not yours to fix.",
@@ -137,7 +161,8 @@ def render_tasks(facts: RepoFacts, verdict: Verdict) -> str:
         return "\n".join(lines) + "\n"
     lines += [
         f"Each task blocks onboarding until the readiness command confirms it. When you finish "
-        f"one, rerun `portfolio sds-ready {facts.checkout}`: its result is the completion signal.",
+        f"one, rerun `{PORTFOLIO_COMMAND} sds-ready {facts.checkout}`: its result is the "
+        "completion signal.",
         "",
     ]
     for check in verdict.devon:
@@ -150,6 +175,15 @@ def render_tasks(facts: RepoFacts, verdict: Verdict) -> str:
 
 def _count(checks: tuple[dict, ...]) -> str:
     return f"{len(checks)} check" + ("" if len(checks) == 1 else "s")
+
+
+def _closing(name: str, phase: str) -> str:
+    """The summary's last line for a ready repository: the question, unless already complete."""
+    if phase == "complete":
+        return "Onboarding is complete."
+    if phase == "in-progress":
+        return "Onboarding is partly done; reply yes to resume it."
+    return f"Ready to onboard {name}. Reply yes to onboard it."
 
 
 def render_summary(facts: RepoFacts, verdict: Verdict) -> str:
@@ -167,7 +201,8 @@ def render_summary(facts: RepoFacts, verdict: Verdict) -> str:
         for check in verdict.environment:
             lines.append(f"  - {check['id']}")
             lines += [f"    {detail['message']}" for detail in check["details"]]
-            lines.append(textwrap.indent(GUIDANCE[check["id"]].how, "    "))
+            if check["fix"]:
+                lines.append(textwrap.indent(check["fix"], "    "))
     home = onboarding_dir(facts.name)
     if verdict.repository:
         lines.append(
@@ -183,10 +218,5 @@ def render_summary(facts: RepoFacts, verdict: Verdict) -> str:
             for check, done in verdict.onboarding
         ]
     if verdict.ready:
-        if verdict.phase == "complete":
-            lines.append("Onboarding is complete.")
-        elif verdict.phase == "in-progress":
-            lines.append("Onboarding is partly done; reply yes to resume it.")
-        else:
-            lines.append(f"Ready to onboard {facts.name}. Reply yes to onboard it.")
+        lines.append(_closing(facts.name, verdict.phase))
     return "\n".join(lines)

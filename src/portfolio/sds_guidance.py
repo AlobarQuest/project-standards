@@ -74,7 +74,7 @@ GUIDANCE: dict[str, Guidance] = {
             "After a fetch, HEAD equals origin/main and `git status --porcelain` prints nothing."
         ),
         how=(
-            "Land your changes on main first, by push or by merged pull request, following the "
+            "Land your changes on main first by a merged pull request, following the "
             "repository's branch protection. Then run "
             "`git -C <repo> checkout main && git -C <repo> pull --ff-only origin main`. Commit, "
             "stash or discard anything left in the working tree, and rerun the readiness command "
@@ -133,9 +133,9 @@ GUIDANCE: dict[str, Guidance] = {
             "lockfile. For an npm repository, make `npm test` run the test suite and collect at "
             "least one test, make the Quality workflow run it, and make its output include an "
             "`N passed` summary line. If the repository has no tests, write tests that exercise "
-            "what a change could break, without changing behavior. Push to main, wait for the "
-            "Quality run to finish, and read its log for the test count; a green check alone "
-            "proves nothing."
+            "what a change could break, without changing behavior. Land the change on main by a "
+            "merged pull request, wait for the Quality run on main to finish, and read its log "
+            "for the test count; a green check alone proves nothing."
         ),
     ),
     "security.clean": Guidance(

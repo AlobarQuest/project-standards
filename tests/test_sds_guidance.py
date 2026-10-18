@@ -135,6 +135,13 @@ def test_ci_executed_covers_python_and_npm():
     assert "npm test" in how
 
 
+@pytest.mark.parametrize("check_id", ["git.current", "ci.executed"])
+def test_changes_land_by_merged_pull_request_never_by_push(check_id):
+    how = GUIDANCE[check_id].how
+    assert "merged pull request" in how
+    assert not re.search(r"\bpush\b", how, re.I)
+
+
 def test_pat_access_is_the_settings_page_procedure():
     how = GUIDANCE["factory.pat_access"].how
     assert "FACTORY_PR_TOKEN" in how

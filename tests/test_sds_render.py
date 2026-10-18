@@ -12,9 +12,11 @@ from portfolio.sds_guidance import (
     ANTI_GOAL_2,
     GUIDANCE,
     SECURITY_SCAN_COMMAND,
+    Guidance,
 )
 from portfolio.sds_render import (
     HANDOFF_FILE,
+    PORTFOLIO_COMMAND,
     TASKS_FILE,
     RepoFacts,
     render_handoff,
@@ -98,7 +100,31 @@ def test_handoff_carries_anti_goals_and_rerun_command():
     assert INSTRUCTION in text
     assert ANTI_GOAL_1 in text and ANTI_GOAL_2 in text
     assert "Never deploy" in text
-    assert "portfolio sds-ready /repos/demo" in text
+    assert "No difference in what the repository serves is intended" in text
+    assert f"{PORTFOLIO_COMMAND} sds-ready /repos/demo" in text
+
+
+def test_handoff_states_the_post_merge_sequence_in_order():
+    text = render_handoff(FACTS, ALL_GAPS)
+    rerun = text[text.index("## Rerun") :]
+    phrases = [
+        "Work on a branch",
+        "Open a pull request",
+        "Merge it once the repository's Quality job passes on it",
+        "git -C /repos/demo checkout main && git -C /repos/demo pull --ff-only origin main",
+        "Wait for the Quality run on `main` to finish green",
+        f"{PORTFOLIO_COMMAND} sds-ready /repos/demo",
+        "`git.current` and `ci.executed` can pass only after this sequence",
+    ]
+    positions = [rerun.index(p) for p in phrases]
+    assert positions == sorted(positions)
+
+
+def test_handoff_explains_placeholders_and_the_portfolio_command():
+    text = render_handoff(FACTS, ALL_GAPS)
+    facts = text[text.index("## Repository facts") : text.index("## Repository work")]
+    assert "`<repo>` and `<checkout>` mean the checkout path above" in facts
+    assert PORTFOLIO_COMMAND in facts
 
 
 def test_handoff_states_the_repository_facts():
@@ -229,11 +255,12 @@ def test_summary_for_a_refused_verdict_asks_nothing(portfolio_env):
     assert "reply yes" not in text.lower()
 
 
-def test_summary_lists_environment_checks_with_their_guidance(portfolio_env):
+def test_summary_lists_environment_checks_with_their_fix_not_guidance(portfolio_env):
     v = verdict(chk("ci.executed", UNKNOWN, "cannot read the run log"))
     text = render_summary(FACTS, v)
     assert "ci.executed" in text and "cannot read the run log" in text
-    assert GUIDANCE["ci.executed"].how in text
+    assert "FIX-SENTINEL-ci.executed" in text
+    assert GUIDANCE["ci.executed"].how not in text
     assert "reply yes" not in text.lower()
 
 
@@ -259,18 +286,43 @@ def test_summary_marks_each_onboarding_action_in_order(portfolio_env):
     assert "\n".join(lines) in text
 
 
-def test_summary_is_deterministic_and_never_renders_a_fix_string(portfolio_env):
+def test_summary_is_deterministic(portfolio_env):
     v = verdict(chk("ci.executed", UNKNOWN, "x"), chk("git.current", VIOLATION, "y"))
     assert render_summary(FACTS, v) == render_summary(FACTS, v)
-    assert "FIX-SENTINEL" not in render_summary(FACTS, v)
+
+
+def test_summary_renders_fix_only_for_environment_checks(portfolio_env):
+    v = verdict(chk("ci.executed", UNKNOWN, "x"), chk("git.current", VIOLATION, "y"))
+    text = render_summary(FACTS, v)
+    assert "FIX-SENTINEL-ci.executed" in text
+    assert "FIX-SENTINEL-git.current" not in text
+
+
+def test_summary_with_refusal_and_repository_work_asks_nothing(portfolio_env):
+    v = verdict(
+        refusal("sds.decisions", "sds.refused-not-onboarding", "demo is not to be onboarded"),
+        chk("ci.executed", VIOLATION, "no tests ran"),
+    )
+    assert v.refusals and v.repository
+    text = render_summary(FACTS, v)
+    assert "Refused:" in text and "demo is not to be onboarded" in text
+    assert "can't be onboarded" in text
+    assert "Repository work: 1 check." in text
+    assert "reply yes" not in text.lower()
 
 
 # -- style -------------------------------------------------------------------
 
 
-def test_own_prose_avoids_hedging_words(portfolio_env):
-    for text in (render_handoff(FACTS, CLEAN), render_tasks(FACTS, CLEAN)):
-        assert not re.search(r"\b(should|simply|just|easily)\b|!", text, re.I)
+HEDGING = re.compile(r"\b(should|simply|just|easily)\b|!", re.I)
+
+
+def test_own_prose_avoids_hedging_words(portfolio_env, monkeypatch):
+    blank = {i: Guidance(g.owner, "", "", "") for i, g in GUIDANCE.items()}
+    monkeypatch.setattr("portfolio.sds_render.GUIDANCE", blank)
+    for v in (CLEAN, ALL_GAPS):
+        for render in (render_handoff, render_tasks, render_summary):
+            assert not HEDGING.search(render(FACTS, v))
 
 
 def test_summary_counts_a_single_check_in_the_singular(portfolio_env):
