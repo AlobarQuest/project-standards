@@ -213,9 +213,12 @@ GUIDANCE: dict[str, Guidance] = {
             "each equal that standard's current `STANDARD_VERSION`."
         ),
         how=(
-            "Read the changes between the pinned and current version of each drifted standard, "
-            "apply them to the repository, then set the pin to the current version. Never raise "
-            "a pin without applying what changed."
+            "The current version of each standard is the `STANDARD_VERSION` file in its "
+            "checkout: `~/Projects/project-standards` (project), `~/Developer/code-standards` "
+            "(code) and `~/Projects/security-standards` (security). For each drifted standard, "
+            "read what changed between the pinned and current version in that checkout's git "
+            "history, apply it to the repository, then set the pin to the current "
+            "version. Never raise a pin without applying what changed."
         ),
     ),
     "sds.behavior_evidence": Guidance(
@@ -420,8 +423,8 @@ GUIDANCE: dict[str, Guidance] = {
         done="App Brain's default-branch-landing answer for the repository is `inert`.",
         how=(
             "The onboarding procedure records the answer from Devon's decision (action 4, "
-            "runbook step 7). A recorded `redeploys` is a refusal, not a gap: choose a "
-            "repository whose landing is inert." + _IDEMPOTENT
+            "runbook step 7)." + _IDEMPOTENT + " A recorded `redeploys` is a refusal, not a "
+            "gap, and a rerun does not change it: choose a repository whose landing is inert."
         ),
     ),
     "repo.protection": Guidance(
