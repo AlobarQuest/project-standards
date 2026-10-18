@@ -196,8 +196,9 @@ def _credential_absent(check_id: str, env_name: str, purpose: str) -> dict:
         ],
         fix=(
             f"export {env_name} before running (the kit reads credentials from the "
-            "environment and never fetches them); integrations/portfolio-scan.sh "
-            "supplies them for the nightly sweep"
+            "environment and never fetches them). For a manual run, load the file "
+            "integrations/portfolio-scan.sh sources: "
+            "`set -a; . ~/.portfolio/credentials.env; set +a`"
         ),
     )
 

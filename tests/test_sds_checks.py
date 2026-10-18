@@ -499,3 +499,27 @@ def test_missing_read_key_is_unknown_and_never_fetches(monkeypatch):
     assert out["id"] == "sds.landing_inert"
     assert config.APP_BRAIN_KEY_ENV in out["details"][0]["message"]
     assert seen == []
+
+
+def test_every_unknown_result_carries_a_fix(monkeypatch):
+    monkeypatch.setenv(config.APP_BRAIN_KEY_ENV, "key")
+
+    def unreadable(args):
+        return None, "HTTP 500"
+
+    def bad_shape(args):
+        return '["not an object"]', ""
+
+    results = [
+        check_declaration(SLUG, gh_read=unreadable),
+        check_cred_inventory(SLUG, gh_read=unreadable),
+        check_branch_settings(SLUG, gh_read=unreadable),
+        check_branch_settings(SLUG, gh_read=bad_shape),
+        check_behavior_evidence(SLUG, gh_read=unreadable),
+        check_landing_inert(SLUG, fetch=lambda slug: None),
+    ]
+    monkeypatch.delenv(config.APP_BRAIN_KEY_ENV)
+    results.append(check_landing_inert(SLUG))
+    assert [r["status"] for r in results] == [UNKNOWN] * len(results)
+    assert all((r["fix"] or "").strip() for r in results)
+    assert "credentials.env" in results[-1]["fix"]

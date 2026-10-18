@@ -182,3 +182,10 @@ def test_decisions_guidance_shows_the_recorded_format():
     how = GUIDANCE["sds.decisions"].how
     assert "decisions.toml" in how
     assert 'landing = "inert"' in how
+
+
+def test_git_current_guidance_never_tells_the_agent_to_dispose_of_foreign_files():
+    how = GUIDANCE["git.current"].how
+    assert "stash or discard" not in how
+    assert "never commit, stash, move or delete" in how
+    assert "list it in your final report" in how

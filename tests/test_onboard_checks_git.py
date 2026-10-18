@@ -81,7 +81,27 @@ def test_dirty_worktree_fires(tmp_path):
     assert "uncommitted" in result["details"][0]["message"]
 
 
-def test_missing_origin_fires_never_green(tmp_path):
+def test_dirty_detail_lists_the_dirty_paths(tmp_path):
+    _, checkout = _clone_with_origin(tmp_path)
+    (checkout / "README.md").write_text("dirty\n")
+    (checkout / "DEPLOY-HANDOFF.md").write_text("devon's\n")
+    result = check_git_current(checkout)
+    detail = result["details"][0]
+    assert detail["id"] == "git.dirty"
+    assert "README.md" in detail["message"]
+    assert "DEPLOY-HANDOFF.md" in detail["message"]
+
+
+def test_dirty_detail_caps_the_listed_paths(tmp_path):
+    _, checkout = _clone_with_origin(tmp_path)
+    for n in range(23):
+        (checkout / f"stray-{n:02d}.txt").write_text("x\n")
+    message = check_git_current(checkout)["details"][0]["message"]
+    assert message.count("stray-") == 20
+    assert message.endswith("and 3 more")
+
+
+def test_missing_origin_is_unmeasured_never_green(tmp_path):
     repo = tmp_path / "loner"
     repo.mkdir()
     (repo / "README.md").write_text("x\n")
@@ -92,7 +112,10 @@ def test_missing_origin_fires_never_green(tmp_path):
     ):
         subprocess.run(["git", *argv], cwd=repo, check=True)
     result = check_git_current(repo)
-    assert result["status"] == "violation"
+    assert result["status"] == "unknown"
+    assert result["details"][0]["id"] == "git.fetch-failed"
+    assert result["fix"]
+    assert result["remediation"] is None
     assert "fetch" in result["details"][0]["message"]
 
 

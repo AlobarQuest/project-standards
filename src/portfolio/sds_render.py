@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .sds_assess import Verdict
 from .sds_checks import EVIDENCE_PATH
-from .sds_decisions import DECISIONS_FILE, FORMAT, onboarding_dir
+from .sds_decisions import DECISIONS_FILE, FORMAT, onboarding_dir, repo_key
 from .sds_guidance import ANTI_GOAL_1, ANTI_GOAL_2, GUIDANCE, SECURITY_SCAN_COMMAND
 
 HANDOFF_FILE = "HANDOFF.md"
@@ -32,6 +32,11 @@ class RepoFacts:
     default_branch: str
     tooling: tuple[str, ...]
     checkout: Path
+
+    @property
+    def key(self) -> str:
+        """The onboarding directory name, from the slug."""
+        return repo_key(self.slug)
 
 
 _INTRO = (
@@ -67,10 +72,31 @@ def _check_section(check: dict, heading: str) -> list[str]:
     ]
 
 
+def _checkout_steps(facts: RepoFacts) -> list[str]:
+    """Steps 3 to 5 of the post-merge sequence; the branch may be unknown."""
+    branch = facts.default_branch
+    if branch == "unknown":
+        checkout = (
+            "3. Find the default branch with "
+            f"`gh repo view {facts.slug} --json defaultBranchRef`, check it out in "
+            f"`{facts.checkout}` and run `git pull --ff-only origin <that branch>` there."
+        )
+        branch = "that branch"
+    else:
+        checkout = (
+            f"3. Check out `{branch}` and pull: `git -C {facts.checkout} checkout {branch} && "
+            f"git -C {facts.checkout} pull --ff-only origin {branch}`."
+        )
+    return [
+        checkout,
+        f"4. Wait for the Quality run on `{branch}` to finish green.",
+        "5. Only then rerun the readiness command:",
+    ]
+
+
 def render_handoff(facts: RepoFacts, verdict: Verdict) -> str:
     """The build handoff: everything a build agent with no other context needs."""
     tooling = ", ".join(f"`{name}`" for name in facts.tooling) or "none found"
-    branch = facts.default_branch
     lines = [
         f"# Make {facts.name} ready for SDS",
         "",
@@ -135,14 +161,15 @@ def render_handoff(facts: RepoFacts, verdict: Verdict) -> str:
         "1. Open a pull request.",
         "2. Merge it once the repository's Quality job passes on it and the evidence file "
         "records no unexplained differences.",
-        f"3. Check out `{branch}` and pull: `git -C {facts.checkout} checkout {branch} && "
-        f"git -C {facts.checkout} pull --ff-only origin {branch}`.",
-        f"4. Wait for the Quality run on `{branch}` to finish green.",
-        "5. Only then rerun the readiness command:",
+        *_checkout_steps(facts),
         "",
         "```bash",
         f"{PORTFOLIO_COMMAND} sds-ready {facts.checkout}",
         "```",
+        "",
+        "Your own reruns lack Devon's credentials, so checks that need them move to the "
+        "environment list and `TASKS.md` in the shared output directory is rewritten. That is "
+        "expected: Devon's rerun restores it.",
         "",
         "`git.current` and `ci.executed` can pass only after this sequence, so a violation on "
         "either before the merge is expected.",
@@ -168,7 +195,7 @@ def render_tasks(facts: RepoFacts, verdict: Verdict) -> str:
     for check in verdict.devon:
         lines += _check_section(check, "##")
         if check["id"] == "sds.decisions":
-            path = onboarding_dir(facts.name) / DECISIONS_FILE
+            path = onboarding_dir(facts.key) / DECISIONS_FILE
             lines += [f"Decisions file: `{path}`", "", "```toml", FORMAT, "```", ""]
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -203,7 +230,7 @@ def render_summary(facts: RepoFacts, verdict: Verdict) -> str:
             lines += [f"    {detail['message']}" for detail in check["details"]]
             if check["fix"]:
                 lines.append(textwrap.indent(check["fix"], "    "))
-    home = onboarding_dir(facts.name)
+    home = onboarding_dir(facts.key)
     if verdict.repository:
         lines.append(
             f"Repository work: {_count(verdict.repository)}. "

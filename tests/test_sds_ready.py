@@ -53,7 +53,7 @@ def _install(monkeypatch, checks):
 
 
 def _home(portfolio_env):
-    return portfolio_env / "onboarding" / "widget"
+    return portfolio_env / "onboarding" / "AlobarQuest__widget"
 
 
 def test_run_all_checks_measures_unscoped_repositories(repo, portfolio_env, monkeypatch):
@@ -182,3 +182,29 @@ def test_refusal_with_repository_work_still_writes_the_handoff(repo, portfolio_e
     _install(monkeypatch, checks)
     assert sds_ready.run(repo, gh=_gh, gh_read=_gh_read) == 3
     assert "code.onboarded" in (_home(portfolio_env) / HANDOFF_FILE).read_text()
+
+
+def test_decisions_are_keyed_on_the_slug_not_the_folder(repo, portfolio_env, monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        sds_ready, "check_decisions", lambda key: seen.append(key) or _check("sds.decisions")
+    )
+    monkeypatch.setattr(onboard_checks, "registered_profiles", lambda: None)
+    monkeypatch.setattr(onboard_checks, "check_git_current", lambda repo: _check("git.current"))
+    monkeypatch.setattr(
+        onboard_checks, "check_security_clean", lambda repo: _check("security.clean")
+    )
+    sds_ready.run_all_checks(repo, _gh, _gh_read, fetch=lambda slug: {"landing": "inert"})
+    assert seen == ["AlobarQuest__widget"]
+
+
+def test_onboard_without_the_flag_still_reports_factory_checks_out_of_scope(repo, monkeypatch):
+    """`portfolio onboard`'s contract: no declared profile means no factory checks."""
+    monkeypatch.setattr(onboard_checks, "check_git_current", lambda repo: _check("git.current"))
+    monkeypatch.setattr(
+        onboard_checks, "check_security_clean", lambda repo: _check("security.clean")
+    )
+    checks = sds_ready.onboard._run_checks(repo, _gh, None, _gh_read)
+    factory = [c for c in checks if c["id"].startswith("factory.")]
+    assert factory
+    assert {c["status"] for c in factory} == {"not-applicable"}

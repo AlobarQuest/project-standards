@@ -1,5 +1,6 @@
 """Tests for sds_render: the build handoff, Devon's task list and the summary."""
 
+import dataclasses
 import re
 from pathlib import Path
 
@@ -178,7 +179,7 @@ def test_handoff_headings_are_well_formed(v):
 
 def test_tasks_name_the_decisions_file_path(portfolio_env):
     text = render_tasks(FACTS, ALL_GAPS)
-    assert str(onboarding_dir("demo") / DECISIONS_FILE) in text
+    assert str(onboarding_dir(FACTS.key) / DECISIONS_FILE) in text
     assert f"```toml\n{FORMAT}\n```" in text
 
 
@@ -267,8 +268,8 @@ def test_summary_lists_environment_checks_with_their_fix_not_guidance(portfolio_
 def test_summary_points_at_the_handoff_and_task_files(portfolio_env):
     text = render_summary(FACTS, ALL_GAPS)
     n_repo, n_devon = len(ALL_GAPS.repository), len(ALL_GAPS.devon)
-    assert str(onboarding_dir("demo") / HANDOFF_FILE) in text
-    assert str(onboarding_dir("demo") / TASKS_FILE) in text
+    assert str(onboarding_dir(FACTS.key) / HANDOFF_FILE) in text
+    assert str(onboarding_dir(FACTS.key) / TASKS_FILE) in text
     assert f"Repository work: {n_repo} checks" in text
     assert f"Devon's tasks: {n_devon} checks" in text
 
@@ -328,3 +329,19 @@ def test_own_prose_avoids_hedging_words(portfolio_env, monkeypatch):
 def test_summary_counts_a_single_check_in_the_singular(portfolio_env):
     v = verdict(chk("ci.executed", VIOLATION, "no tests ran"))
     assert "Repository work: 1 check." in render_summary(FACTS, v)
+
+
+def test_handoff_does_not_render_an_unknown_default_branch_as_a_checkout():
+    facts = dataclasses.replace(FACTS, default_branch="unknown")
+    text = render_handoff(facts, ALL_GAPS)
+    assert "checkout unknown" not in text
+    assert "origin unknown" not in text
+    assert "gh repo view AlobarQuest/demo --json defaultBranchRef" in text
+    assert "Wait for the Quality run" in text
+
+
+def test_handoff_warns_that_the_agents_reruns_lack_credentials():
+    text = render_handoff(FACTS, ALL_GAPS)
+    rerun = text[text.index("## Rerun") :]
+    assert "lack Devon's credentials" in rerun
+    assert "`TASKS.md`" in rerun

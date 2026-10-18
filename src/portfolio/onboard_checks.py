@@ -955,6 +955,11 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
     )
 
 
+# `git.dirty` names this many paths, so a reader can tell their own files from
+# someone else's without the detail growing without bound.
+_DIRTY_PATHS_SHOWN = 20
+
+
 def check_git_current(repo: Path) -> dict:
     """Is the checkout current with, and clean against, origin/main?
 
@@ -974,7 +979,7 @@ def check_git_current(repo: Path) -> dict:
         message = "" if fetch is None else (fetch.stderr or fetch.stdout).strip()
         return _result(
             "git.current",
-            VIOLATION,
+            UNKNOWN,
             details=[{"id": "git.fetch-failed", "message": f"git fetch origin main: {message}"}],
             fix=f"ensure {repo} has an 'origin' remote on GitHub and network access, then re-run",
         )
@@ -1014,10 +1019,22 @@ def check_git_current(repo: Path) -> dict:
             fix=f"inspect {repo} by hand",
         )
     if status.stdout.strip():
+        paths = [line[3:] for line in status.stdout.splitlines() if line.strip()]
+        listed = ", ".join(paths[:_DIRTY_PATHS_SHOWN])
+        if len(paths) > _DIRTY_PATHS_SHOWN:
+            listed += f", and {len(paths) - _DIRTY_PATHS_SHOWN} more"
         return _result(
             "git.current",
             VIOLATION,
-            details=[{"id": "git.dirty", "message": "worktree has uncommitted changes"}],
-            fix=f"commit, stash, or discard the changes in {repo}, then re-run",
+            details=[
+                {
+                    "id": "git.dirty",
+                    "message": f"worktree has uncommitted changes: {listed}",
+                }
+            ],
+            fix=(
+                f"land your own changes in {repo}; leave any file you did not create in place "
+                "and report it, then re-run"
+            ),
         )
     return _result("git.current", PASS)

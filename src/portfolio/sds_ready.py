@@ -3,7 +3,7 @@
 Runs the shared onboarding checks (measuring a repository with no declared
 profile, since the caller named it), the SDS-specific checks, and the decisions
 file; sorts the results by who acts on them; writes the build handoff and
-Devon's task list under `~/.portfolio/onboarding/<repo>/`, and prints a summary
+Devon's task list under `~/.portfolio/onboarding/<owner>__<repo>/`, and prints a summary
 to stderr. Exit 0 = ready, 1 = not ready, 2 = the kit could not run, 3 = refused.
 
 Read-only against GitHub, App Brain and the target repository; the same `.git/`
@@ -23,7 +23,7 @@ from .sds_checks import (
     check_declaration,
     check_landing_inert,
 )
-from .sds_decisions import check_decisions, onboarding_dir
+from .sds_decisions import check_decisions, onboarding_dir, repo_key
 from .sds_render import (
     HANDOFF_FILE,
     TASKS_FILE,
@@ -49,7 +49,7 @@ def run_all_checks(repo: Path, gh, gh_read, fetch=None) -> list[dict]:
             gh_read,
             measure_unscoped=True,
         ),
-        check_decisions(repo.name),
+        check_decisions(repo_key(slug)),
         check_declaration(slug, gh_read=gh_read),
         check_cred_inventory(slug, gh_read=gh_read),
         check_branch_settings(slug, gh_read=gh_read),
@@ -97,7 +97,7 @@ def run(repo: Path, gh=onboard_checks._gh, gh_read=onboard_checks._gh_read) -> i
         handoff = render_handoff(facts, verdict) if verdict.repository else ""
         tasks = render_tasks(facts, verdict) if verdict.devon else ""
         summary = render_summary(facts, verdict)
-        out_dir = onboarding_dir(repo.name)
+        out_dir = onboarding_dir(repo_key(slug))
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / READINESS_FILE).write_text(json.dumps(checks, indent=2) + "\n")
         _sync(out_dir / HANDOFF_FILE, handoff)

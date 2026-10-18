@@ -76,9 +76,11 @@ GUIDANCE: dict[str, Guidance] = {
         how=(
             "Land your changes on main first by a merged pull request, following the "
             "repository's branch protection. Then run "
-            "`git -C <repo> checkout main && git -C <repo> pull --ff-only origin main`. Commit, "
-            "stash or discard anything left in the working tree, and rerun the readiness command "
-            "from that checkout. A feature branch never passes this check."
+            "`git -C <repo> checkout main && git -C <repo> pull --ff-only origin main`. A "
+            "file in the working tree that you did not create is Devon's: never commit, stash, "
+            "move or delete it. Leave it in place and list it in your final report so Devon can "
+            "resolve it; `git.current` stays a violation until he does. Rerun the readiness "
+            "command from that checkout. A feature branch never passes this check."
         ),
     ),
     "project.manifest": Guidance(
@@ -271,7 +273,7 @@ GUIDANCE: dict[str, Guidance] = {
             '`landing = "inert"`.'
         ),
         how=(
-            "Write `<portfolio home, default ~/.portfolio>/onboarding/<repository name>/"
+            "Write `<portfolio home, default ~/.portfolio>/onboarding/<owner>__<repository>/"
             "decisions.toml` in this format:\n"
             f"{FORMAT}\n"
             "Decide the landing answer by reading all three ways a landing can redeploy: the "

@@ -7,6 +7,7 @@ from portfolio.sds_decisions import (
     check_decisions,
     onboarding_dir,
     read_decisions,
+    repo_key,
 )
 
 
@@ -112,3 +113,7 @@ def test_complete_inert_decision_passes(portfolio_env):
     assert out["status"] == "pass"
     assert out["details"] == []
     assert read_decisions("r") == Decisions(True, "why", "inert")
+
+
+def test_repo_key_is_the_slug_with_slashes_replaced():
+    assert repo_key("AlobarQuest/RentVSBuyGA") == "AlobarQuest__RentVSBuyGA"

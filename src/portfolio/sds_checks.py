@@ -35,6 +35,10 @@ EVIDENCE_PATH = "docs/sds-readiness/evidence.toml"
 INVENTORY_FILE = ".cred-consumers.toml"
 DECLARATION_FILE = "factory-target.toml"
 
+# What to do about a read that failed: the failure is the operator's environment,
+# not the repository, so the fix is about the environment too.
+ENVIRONMENT_FIX = "check `gh auth status` and network access, then rerun"
+
 # (inventory repository, credential id, Actions secret name) -- one entry per
 # credential a factory target must hold a copy of.
 INVENTORIES = (
@@ -59,6 +63,7 @@ def check_declaration(slug: str, gh_read=_gh_read) -> dict:
                     "sds.declaration-unreadable", f"{DECLARATION_FILE} could not be read: {why}"
                 )
             ],
+            fix=ENVIRONMENT_FIX,
         )
     fix = (
         f"declare `factory_target = true` and a reason in {DECLARATION_FILE} on the default branch"
@@ -125,6 +130,7 @@ def check_cred_inventory(slug: str, gh_read=_gh_read) -> dict:
                         f"{why or 'file absent'}",
                     )
                 ],
+                fix=ENVIRONMENT_FIX,
             )
         if not _holds_consumer(parsed, credential_id, secret, slug):
             missing.append(
@@ -163,7 +169,9 @@ class _Unreadable(Exception):
 
 
 def _branch_unknown(detail_id: str, message: str) -> dict:
-    return _result(BRANCH_SETTINGS_CHECK, UNKNOWN, details=[_detail(detail_id, message)])
+    return _result(
+        BRANCH_SETTINGS_CHECK, UNKNOWN, details=[_detail(detail_id, message)], fix=ENVIRONMENT_FIX
+    )
 
 
 def _typed(body: dict, field: str, kind: type):
@@ -322,6 +330,7 @@ def check_behavior_evidence(slug: str, gh_read=_gh_read) -> dict:
             details=[
                 _detail("sds.evidence-unreadable", f"{EVIDENCE_PATH} could not be read: {why}")
             ],
+            fix=ENVIRONMENT_FIX,
         )
     if text is None:
         return _evidence_result(

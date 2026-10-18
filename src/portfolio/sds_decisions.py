@@ -36,12 +36,17 @@ class Decisions:
     landing: str | None
 
 
-def onboarding_dir(repo_name: str) -> Path:
-    return config.portfolio_home() / "onboarding" / repo_name
+def repo_key(slug: str) -> str:
+    """The directory name for a GitHub slug: two checkouts named alike never share one."""
+    return slug.replace("/", "__")
 
 
-def _path(repo_name: str) -> Path:
-    return onboarding_dir(repo_name) / DECISIONS_FILE
+def onboarding_dir(key: str) -> Path:
+    return config.portfolio_home() / "onboarding" / key
+
+
+def _path(key: str) -> Path:
+    return onboarding_dir(key) / DECISIONS_FILE
 
 
 def read_decisions(repo_name: str) -> Decisions:
