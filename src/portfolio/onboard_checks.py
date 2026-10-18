@@ -319,9 +319,12 @@ def check_protection(slug: str, gh_read=_gh_read) -> dict:
             VIOLATION,
             details=[{"id": "repo.unprotected", "message": "main has no branch protection"}],
             fix=(
-                f"gh api -X PUT repos/{slug}/branches/main/protection "
-                "-f required_pull_request_reviews.required_approving_review_count=1 "
-                "(Devon runs this; the kit never writes settings)"
+                "set branch protection on main with at least one required status "
+                "check named by its JOB name, `strict: false`, and no required "
+                "review count (a solo account cannot approve "
+                "its own pull requests); see step 9 of the orchestrator runbook, "
+                "docs/operations/onboarding-a-target.md "
+                f"(repos/{slug}; Devon runs this, the kit never writes settings)"
             ),
         )
     return _result(
@@ -857,6 +860,13 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
             details=[{"id": "ci.no-origin", "message": "cannot derive GitHub slug from origin"}],
             fix=f"add a GitHub origin remote to {repo}",
         )
+    if not (repo / ".github/workflows/quality.yml").is_file():
+        return _result(
+            "ci.executed",
+            VIOLATION,
+            details=[{"id": "ci.no-workflow", "message": "no .github/workflows/quality.yml"}],
+            fix="add the Quality workflow: see code.onboarded",
+        )
     listing = gh(
         [
             "run",
@@ -945,6 +955,11 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
     )
 
 
+# `git.dirty` names this many paths, so a reader can tell their own files from
+# someone else's without the detail growing without bound.
+_DIRTY_PATHS_SHOWN = 20
+
+
 def check_git_current(repo: Path) -> dict:
     """Is the checkout current with, and clean against, origin/main?
 
@@ -964,7 +979,7 @@ def check_git_current(repo: Path) -> dict:
         message = "" if fetch is None else (fetch.stderr or fetch.stdout).strip()
         return _result(
             "git.current",
-            VIOLATION,
+            UNKNOWN,
             details=[{"id": "git.fetch-failed", "message": f"git fetch origin main: {message}"}],
             fix=f"ensure {repo} has an 'origin' remote on GitHub and network access, then re-run",
         )
@@ -1004,10 +1019,22 @@ def check_git_current(repo: Path) -> dict:
             fix=f"inspect {repo} by hand",
         )
     if status.stdout.strip():
+        paths = [line[3:] for line in status.stdout.splitlines() if line.strip()]
+        listed = ", ".join(paths[:_DIRTY_PATHS_SHOWN])
+        if len(paths) > _DIRTY_PATHS_SHOWN:
+            listed += f", and {len(paths) - _DIRTY_PATHS_SHOWN} more"
         return _result(
             "git.current",
             VIOLATION,
-            details=[{"id": "git.dirty", "message": "worktree has uncommitted changes"}],
-            fix=f"commit, stash, or discard the changes in {repo}, then re-run",
+            details=[
+                {
+                    "id": "git.dirty",
+                    "message": f"worktree has uncommitted changes: {listed}",
+                }
+            ],
+            fix=(
+                f"land your own changes in {repo}; leave any file you did not create in place "
+                "and report it, then re-run"
+            ),
         )
     return _result("git.current", PASS)

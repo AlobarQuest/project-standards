@@ -196,8 +196,9 @@ def _credential_absent(check_id: str, env_name: str, purpose: str) -> dict:
         ],
         fix=(
             f"export {env_name} before running (the kit reads credentials from the "
-            "environment and never fetches them); integrations/portfolio-scan.sh "
-            "supplies them for the nightly sweep"
+            "environment and never fetches them). For a manual run, load the file "
+            "integrations/portfolio-scan.sh sources: "
+            "`set -a; . ~/.portfolio/credentials.env; set +a`"
         ),
     )
 
@@ -230,7 +231,13 @@ def _token_gh_read(token: str):
     return gh_read
 
 
-def check_pat_access(repo, slug: str, token: str | None = None, gh_read=None) -> dict:
+def check_pat_access(
+    repo,
+    slug: str,
+    token: str | None = None,
+    gh_read=None,
+    measure_unscoped: bool = False,
+) -> dict:
     """Can `FACTORY_PR_TOKEN` reach this repository, with WRITE access?
 
     **A 200 is not the answer, and taking it as one is fail-open.** Measured
@@ -248,7 +255,7 @@ def check_pat_access(repo, slug: str, token: str | None = None, gh_read=None) ->
     operator's environment was wrong.
     """
     check_id = "factory.pat_access"
-    if not in_q2_scope(repo):
+    if not (measure_unscoped or in_q2_scope(repo)):
         return _out_of_scope(check_id)
     token = token if token is not None else config.factory_pat()
     if not token:
@@ -356,7 +363,7 @@ def check_pat_access(repo, slug: str, token: str | None = None, gh_read=None) ->
     )
 
 
-def check_pat_scope(repo, token: str | None = None) -> dict:
+def check_pat_scope(repo, token: str | None = None, measure_unscoped: bool = False) -> dict:
     """May `FACTORY_PR_TOKEN` push a commit touching `.github/workflows/**`?
 
     **This check is ALWAYS `unknown`, and saying so is the point.** There is no
@@ -377,7 +384,7 @@ def check_pat_scope(repo, token: str | None = None) -> dict:
     the second is a statement about GitHub.
     """
     check_id = "factory.pat_scope"
-    if not in_q2_scope(repo):
+    if not (measure_unscoped or in_q2_scope(repo)):
         return _out_of_scope(check_id)
     token = token if token is not None else config.factory_pat()
     if not token:
@@ -407,7 +414,7 @@ def check_pat_scope(repo, token: str | None = None) -> dict:
     )
 
 
-def check_secrets(repo, slug: str, gh=_gh) -> dict:
+def check_secrets(repo, slug: str, gh=_gh, measure_unscoped: bool = False) -> dict:
     """The Actions secrets the reusable workflow requires, present BY NAME.
 
     The required set is read from factory-runner's workflow AT ITS DECLARED PIN,
@@ -424,7 +431,7 @@ def check_secrets(repo, slug: str, gh=_gh) -> dict:
     repository, and nothing here can see a secret's value.
     """
     check_id = "factory.secrets"
-    if not in_q2_scope(repo):
+    if not (measure_unscoped or in_q2_scope(repo)):
         return _out_of_scope(check_id)
     pin = declared_pin(gh=gh)
     if pin is None:
@@ -530,7 +537,7 @@ def _landing_fetch(slug: str, base_url: str, key: str):
     )
 
 
-def check_landing_known(repo, slug: str, fetch=None) -> dict:
+def check_landing_known(repo, slug: str, fetch=None, measure_unscoped: bool = False) -> dict:
     """Has the estate DETERMINED what landing on this repository's default branch does?
 
     App Brain is the authority and is asked, never re-derived: the answer needs
@@ -547,7 +554,7 @@ def check_landing_known(repo, slug: str, fetch=None) -> dict:
     repository; the other needs someone to set an environment variable.
     """
     check_id = "factory.landing_known"
-    if not in_q2_scope(repo):
+    if not (measure_unscoped or in_q2_scope(repo)):
         return _out_of_scope(check_id)
     key = config.app_brain_read_key()
     if not key:
@@ -697,7 +704,7 @@ def _app_reach_finding(reach: AppReach, slug: str) -> str | tuple[str, dict, str
     )
 
 
-def check_app_access(repo, slug: str, reach=None) -> dict:
+def check_app_access(repo, slug: str, reach=None, measure_unscoped: bool = False) -> dict:
     """Can the Dispatch App reach this repository, with the permissions the work needs?
 
     **Doing factory work takes TWO credentials and only one of them was ever
@@ -737,7 +744,7 @@ def check_app_access(repo, slug: str, reach=None) -> dict:
     installation at all.
     """
     check_id = "factory.app_access"
-    if not in_q2_scope(repo):
+    if not (measure_unscoped or in_q2_scope(repo)):
         return _out_of_scope(check_id)
     answer = (reach or memoizing_reach())()
     if not isinstance(answer, AppReach):
@@ -846,7 +853,9 @@ def check_app_access(repo, slug: str, reach=None) -> dict:
     )
 
 
-def run_factory_checks(repo, slug: str, gh=_gh, reach=None) -> list[dict]:
+def run_factory_checks(
+    repo, slug: str, gh=_gh, reach=None, measure_unscoped: bool = False
+) -> list[dict]:
     """The five Q2 capability checks in this module, in `FACTORY_CHECKS` order.
 
     `runner.caller` is a Q2 check too and is NOT here: it predates this module
@@ -856,13 +865,17 @@ def run_factory_checks(repo, slug: str, gh=_gh, reach=None) -> list[dict]:
     `reach` is threaded rather than defaulted inside `check_app_access` so a
     SWEEP reads the App installation once for every repository instead of once
     each; a single-repository caller can leave it alone.
+
+    `measure_unscoped` measures a repository that declares no `delivery_profile`:
+    for a caller that NAMED the repository, which the sweep's scope rule exists
+    to infer. The sweep never passes it.
     """
     return [
-        check_pat_access(repo, slug),
-        check_pat_scope(repo),
-        check_secrets(repo, slug, gh=gh),
-        check_landing_known(repo, slug),
-        check_app_access(repo, slug, reach=reach),
+        check_pat_access(repo, slug, measure_unscoped=measure_unscoped),
+        check_pat_scope(repo, measure_unscoped=measure_unscoped),
+        check_secrets(repo, slug, gh=gh, measure_unscoped=measure_unscoped),
+        check_landing_known(repo, slug, measure_unscoped=measure_unscoped),
+        check_app_access(repo, slug, reach=reach, measure_unscoped=measure_unscoped),
     ]
 
 

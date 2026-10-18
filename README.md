@@ -164,6 +164,31 @@ for where `init` best fits in a project's lifecycle.
 
 ---
 
+## SDS readiness: `portfolio sds-ready <repo>`
+
+Run `portfolio sds-ready <path-to-checkout>` to learn whether a repository is ready for the
+SDS factory. The command runs the onboarding checks and the SDS checks, sorts each result by who
+acts on it, and prints a summary to stderr. It reads GitHub and App Brain and writes nothing
+to them or to the repository's working tree.
+
+Exit codes: `0` ready, `1` not ready, `2` the command could not run (not a directory, no GitHub
+`origin`, or an internal error), `3` refused (a recorded decision makes the repository ineligible).
+
+Credentials: the checks that probe GitHub tokens and App Brain read them from the environment
+(`FACTORY_PR_TOKEN`, `APP_BRAIN_READ_KEY`, `DISPATCH_APP_PRIVATE_KEY_B64`). For a manual run,
+load the file the nightly sweep uses before running: `set -a; . ~/.portfolio/credentials.env;
+set +a`. Without them those checks are reported as environment problems, never as passes.
+
+Output files, under `~/.portfolio/onboarding/<owner>__<repo>/` (the GitHub slug with `/`
+replaced by `__`, so `AlobarQuest/RentVSBuyGA` is `AlobarQuest__RentVSBuyGA`; the decisions file
+lives there too):
+
+- `readiness.json`: the full check list, written on every run that reaches assessment.
+- `HANDOFF.md`: the work for a build agent. Written only when repository work remains.
+- `TASKS.md`: Devon's tasks. Written only when any remain.
+
+A run deletes `HANDOFF.md` or `TASKS.md` when it has nothing to say, so a stale file never survives.
+
 ## Foundation conformance matrix
 
 A repo × standard conformance matrix for **foundational repos** — those that provide standards,

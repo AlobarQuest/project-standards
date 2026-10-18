@@ -128,3 +128,12 @@ def test_ci_executed_in_progress_run_is_unknown_not_violation(tmp_path):
     gh = _fake_gh(run_list=json.dumps([{"databaseId": 42, "conclusion": None}]))
     result = check_ci_executed(repo, gh=gh)
     assert result["status"] == "unknown"
+
+
+def test_ci_without_quality_workflow_names_the_cause(tmp_path):
+    repo = _repo(tmp_path, {".code-standards.toml": "[languages]\n"})
+    result = check_ci_executed(repo, gh=lambda a: None)
+    assert result["status"] == "violation"
+    assert result["details"][0]["id"] == "ci.no-workflow"
+    assert result["remediation"] is None
+    assert "gh auth" not in (result["fix"] or "")

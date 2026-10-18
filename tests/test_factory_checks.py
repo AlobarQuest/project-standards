@@ -839,3 +839,41 @@ def test_a_sweep_reaches_the_remote_through_the_reader_it_was_given(make_repo, m
     caller = next(c for c in results[str(repo)] if c["id"] == "runner.caller")
     assert seen == ["repos/AlobarQuest/a/contents/factory-target.toml"]
     assert caller["status"] == "unknown"  # never a defect pinned on the repository
+
+
+# --------------------------------------------------------------------------
+# measure_unscoped: an explicitly named repository is measured without a profile
+# --------------------------------------------------------------------------
+
+
+def test_unscoped_repo_is_measured_when_asked(make_repo, credentials):
+    result = check_landing_known(
+        _unscoped(make_repo),
+        "AlobarQuest/y",
+        fetch=lambda _s: {"landing": "inert", "reason": None},
+        measure_unscoped=True,
+    )
+    assert result["status"] == "pass"
+
+
+def test_without_the_flag_an_unscoped_repo_still_reads_out_of_scope(make_repo, credentials):
+    result = check_landing_known(
+        _unscoped(make_repo),
+        "AlobarQuest/y",
+        fetch=lambda _s: pytest.fail("out-of-scope repo must not reach the network"),
+    )
+    assert result["details"][0]["id"] == "factory.landing_known.out-of-scope"
+
+
+def test_run_factory_checks_threads_the_flag_to_every_check(make_repo, credentials, monkeypatch):
+    monkeypatch.setattr(
+        "portfolio.factory_checks._token_gh_read", lambda _t: _gh_read(_repo_body(True))
+    )
+    out = run_factory_checks(
+        _unscoped(make_repo),
+        "AlobarQuest/y",
+        gh=_fake_gh(),
+        reach=lambda: AppUnreadable("x.unreadable", "HTTP 401", "check the key"),
+        measure_unscoped=True,
+    )
+    assert all(not c["details"] or not c["details"][0]["id"].endswith("out-of-scope") for c in out)
