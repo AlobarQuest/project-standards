@@ -97,14 +97,14 @@ def run(repo: Path, gh=onboard_checks._gh, gh_read=onboard_checks._gh_read) -> i
         handoff = render_handoff(facts, verdict) if verdict.repository else ""
         tasks = render_tasks(facts, verdict) if verdict.devon else ""
         summary = render_summary(facts, verdict)
-    except Exception as error:  # kit bug: never masquerade as a readiness verdict
+        out_dir = onboarding_dir(repo.name)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / READINESS_FILE).write_text(json.dumps(checks, indent=2) + "\n")
+        _sync(out_dir / HANDOFF_FILE, handoff)
+        _sync(out_dir / TASKS_FILE, tasks)
+    except Exception as error:  # kit bug or unwritable output: never a partial verdict
         print(f"sds-ready: internal error: {error}", file=sys.stderr)
         return 2
-    out_dir = onboarding_dir(repo.name)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / READINESS_FILE).write_text(json.dumps(checks, indent=2) + "\n")
-    _sync(out_dir / HANDOFF_FILE, handoff)
-    _sync(out_dir / TASKS_FILE, tasks)
     print(summary, file=sys.stderr)
     if verdict.refusals:
         return 3

@@ -56,6 +56,11 @@ def test_the_command_emits_exactly_the_guided_and_excluded_ids(
     monkeypatch.setattr(onboard_checks, "registered_profiles", lambda: ["web"])
     monkeypatch.setattr(
         onboard_checks,
+        "check_git_current",
+        lambda repo: {"id": "git.current", "status": "pass", "details": []},
+    )
+    monkeypatch.setattr(
+        onboard_checks,
         "check_security_clean",
         lambda repo: {"id": "security.clean", "status": "pass", "details": []},
     )

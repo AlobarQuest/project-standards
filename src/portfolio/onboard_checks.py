@@ -863,7 +863,7 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
     if not (repo / ".github/workflows/quality.yml").is_file():
         return _result(
             "ci.executed",
-            UNKNOWN,
+            VIOLATION,
             details=[{"id": "ci.no-workflow", "message": "no .github/workflows/quality.yml"}],
             fix="add the Quality workflow: see code.onboarded",
         )

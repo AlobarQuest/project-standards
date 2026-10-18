@@ -66,6 +66,7 @@ def test_run_all_checks_measures_unscoped_repositories(repo, portfolio_env, monk
 
     monkeypatch.setattr(sds_ready.onboard, "_run_checks", spy)
     monkeypatch.setattr(onboard_checks, "registered_profiles", lambda: None)
+    monkeypatch.setattr(onboard_checks, "check_git_current", lambda repo: _check("git.current"))
     monkeypatch.setattr(
         onboard_checks, "check_security_clean", lambda repo: _check("security.clean")
     )
@@ -161,3 +162,23 @@ def test_cli_wires_sds_ready(repo, portfolio_env, monkeypatch):
     monkeypatch.setattr(cli, "sds_ready_run", fake_run)
     assert main(["sds-ready", str(repo)]) == 0
     assert calls == [repo]
+
+
+def test_unwritable_output_exits_2(repo, portfolio_env, monkeypatch, capsys):
+    (portfolio_env / "onboarding").write_text("a file where the directory belongs")
+    _install(monkeypatch, _with(_all_pass(), "code.onboarded", "violation"))
+    assert sds_ready.run(repo, gh=_gh, gh_read=_gh_read) == 2
+    assert "sds-ready: internal error" in capsys.readouterr().err
+
+
+def test_refusal_with_repository_work_still_writes_the_handoff(repo, portfolio_env, monkeypatch):
+    checks = _with(_all_pass(), "code.onboarded", "violation")
+    checks = _with(
+        checks,
+        "sds.landing_inert",
+        "violation",
+        [{"id": "sds.refused-redeploys", "message": "landing redeploys"}],
+    )
+    _install(monkeypatch, checks)
+    assert sds_ready.run(repo, gh=_gh, gh_read=_gh_read) == 3
+    assert "code.onboarded" in (_home(portfolio_env) / HANDOFF_FILE).read_text()
