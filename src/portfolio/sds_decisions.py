@@ -20,7 +20,7 @@ LANDING_VALUES = ("inert", "redeploys")
 
 FORMAT = (
     "onboard = true\n"
-    'onboard_reason = "why this repository should be a factory target"\n'
+    'onboard_reason = "why the factory works on this repository"\n'
     'landing = "inert"   # or "redeploys"'
 )
 
