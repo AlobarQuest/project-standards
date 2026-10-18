@@ -16,6 +16,16 @@ class Verdict:
     ready: bool
 
 
+_STATUSES = frozenset({"pass", "not-applicable", "violation", "unknown"})
+
+
+def _status(check: dict) -> str:
+    """The check's status, refusing one this module does not know how to route."""
+    if check["status"] not in _STATUSES:
+        raise ValueError(f"check {check['id']!r} has unrecognised status {check['status']!r}")
+    return check["status"]
+
+
 def _phase(done_flags: list[bool]) -> str:
     if not any(done_flags):
         return "not-started"
@@ -29,7 +39,10 @@ def assess(checks: list[dict]) -> Verdict:
     else (an onboarding-owned one still counts, not done, toward the phase).
     `unknown` is an environment problem whoever owns the check, so it never
     reaches the build handoff or Devon's list. Onboarding-owned checks are
-    planned actions, not gaps: done means `pass` only.
+    planned actions, not gaps: done means `pass` only. An unguided id raises
+    `KeyError` and an unrecognised status raises `ValueError`; neither routes
+    silently. The caller must pass every guided check: a missing one is not
+    noticed here.
     """
     refusals: list[dict] = []
     environment: list[dict] = []
@@ -40,7 +53,7 @@ def assess(checks: list[dict]) -> Verdict:
         if check["id"] in EXCLUDED:
             continue
         owner = GUIDANCE[check["id"]].owner
-        status = check["status"]
+        status = _status(check)
         done = status == "pass"
         refused = [d for d in check["details"] if d.get("id") in REFUSAL_DETAIL_IDS]
         if owner == "onboarding":

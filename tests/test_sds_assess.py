@@ -136,3 +136,28 @@ def test_tuple_order_follows_input_order():
     order = ["security.clean", "git.current", "code.onboarded"]
     v = assess([chk(i, VIOLATION) for i in order])
     assert [c["id"] for c in v.repository] == order
+
+
+def test_unrecognised_status_raises():
+    with pytest.raises(ValueError, match="git.current.*skipped"):
+        assess([chk("git.current", "skipped"), *clean_rest("git.current")])
+
+
+def test_refused_onboarding_check_is_not_done_and_refuses_only():
+    v = assess(
+        [
+            chk("sds.landing_inert", VIOLATION, "sds.refused-redeploys"),
+            *clean_rest("sds.landing_inert"),
+        ]
+    )
+    assert dict((c["id"], d) for c, d in v.onboarding)["sds.landing_inert"] is False
+    assert len(v.refusals) == 1
+    assert v.environment == () and v.devon == () and v.repository == ()
+    assert not v.ready
+
+
+def test_refusal_detail_on_a_passing_check_still_refuses():
+    v = assess(
+        [chk("sds.decisions", PASS, "sds.refused-not-onboarding"), *clean_rest("sds.decisions")]
+    )
+    assert len(v.refusals) == 1 and not v.ready
