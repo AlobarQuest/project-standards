@@ -1,8 +1,10 @@
 import base64
 import json
 
+import pytest
+
 from portfolio.matrix import PASS, UNKNOWN, VIOLATION
-from portfolio.sds_checks import check_cred_inventory, check_declaration
+from portfolio.sds_checks import check_branch_settings, check_cred_inventory, check_declaration
 
 SLUG = "AlobarQuest/RentVSBuyGA"
 NOT_FOUND = "gh: Not Found (HTTP 404)\n"
@@ -130,3 +132,125 @@ def test_inventory_not_toml_is_unknown():
     out = check_cred_inventory(SLUG, gh_read=_serve(_inventories(orch="= not toml [")))
     assert out["status"] == UNKNOWN
     assert out["details"][0]["id"] == "sds.inventory-unreadable"
+
+
+REPO_OK = {
+    "default_branch": "main",
+    "allow_squash_merge": True,
+    "squash_merge_commit_message": "COMMIT_MESSAGES",
+    "allow_auto_merge": True,
+}
+PROTECTION_OK = {"required_status_checks": {"strict": False, "contexts": ["Quality"]}}
+UNPROTECTED = "gh: Branch not protected (HTTP 404)\n"
+
+
+def _settings(repo, protection):
+    """`gh_read` serving the repo body and the protection body (a dict, raw text or error tuple)."""
+
+    def gh_read(args):
+        path = args[-1]
+        answer = protection if path.endswith("/protection") else repo
+        if isinstance(answer, tuple):
+            return answer
+        return (answer if isinstance(answer, str) else json.dumps(answer)), ""
+
+    return gh_read
+
+
+def _ids(out):
+    return [d["id"] for d in out["details"]]
+
+
+def test_fully_configured_passes():
+    assert check_branch_settings(SLUG, gh_read=_settings(REPO_OK, PROTECTION_OK))["status"] == PASS
+
+
+def test_rentvsbuyga_as_surveyed():
+    repo = {**REPO_OK, "allow_auto_merge": False}
+    out = check_branch_settings(SLUG, gh_read=_settings(repo, (None, UNPROTECTED)))
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.no-protection", "sds.auto-merge-off"]
+
+
+def test_every_unmet_setting_in_listed_order():
+    repo = {"default_branch": "main"}
+    protection = {
+        "required_status_checks": {"strict": True, "contexts": [], "checks": []},
+        "required_pull_request_reviews": {"required_approving_review_count": 1},
+    }
+    out = check_branch_settings(SLUG, gh_read=_settings(repo, protection))
+    assert _ids(out) == [
+        "sds.squash-disallowed",
+        "sds.squash-message",
+        "sds.no-required-check",
+        "sds.strict",
+        "sds.review-required",
+        "sds.auto-merge-off",
+    ]
+
+
+def test_review_count_is_flagged():
+    protection = {
+        **PROTECTION_OK,
+        "required_pull_request_reviews": {"required_approving_review_count": 2},
+    }
+    out = check_branch_settings(SLUG, gh_read=_settings(REPO_OK, protection))
+    assert _ids(out) == ["sds.review-required"]
+
+
+def test_zero_review_count_passes():
+    protection = {
+        **PROTECTION_OK,
+        "required_pull_request_reviews": {"required_approving_review_count": 0},
+    }
+    assert check_branch_settings(SLUG, gh_read=_settings(REPO_OK, protection))["status"] == PASS
+
+
+def test_checks_list_counts_as_a_required_check():
+    protection = {
+        "required_status_checks": {
+            "strict": False,
+            "contexts": [],
+            "checks": [{"context": "Quality"}],
+        }
+    }
+    assert check_branch_settings(SLUG, gh_read=_settings(REPO_OK, protection))["status"] == PASS
+
+
+def test_unreadable_repo_is_unknown():
+    out = check_branch_settings(SLUG, gh_read=_settings((None, "HTTP 500"), PROTECTION_OK))
+    assert out["status"] == UNKNOWN
+    assert _ids(out) == ["sds.settings-unreadable"]
+
+
+def test_unreadable_protection_is_unknown():
+    out = check_branch_settings(SLUG, gh_read=_settings(REPO_OK, (None, "HTTP 500")))
+    assert out["status"] == UNKNOWN
+    assert _ids(out) == ["sds.protection-unreadable"]
+
+
+def test_plan_limited_protection_is_unknown():
+    why = "gh: Upgrade to GitHub Pro or make this repository public (HTTP 403)"
+    out = check_branch_settings(SLUG, gh_read=_settings(REPO_OK, (None, why)))
+    assert out["status"] == UNKNOWN
+    assert _ids(out) == ["sds.protection-unavailable"]
+
+
+@pytest.mark.parametrize("body", ["[]", "not json", "null", '{"default_branch": 7}'])
+def test_malformed_repo_body_is_unknown(body):
+    out = check_branch_settings(SLUG, gh_read=_settings(body, PROTECTION_OK))
+    assert out["status"] == UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "protection",
+    [
+        "[]",
+        {"required_status_checks": []},
+        {"required_pull_request_reviews": "x"},
+        {"required_pull_request_reviews": {"required_approving_review_count": "1"}},
+    ],
+)
+def test_malformed_protection_body_is_unknown(protection):
+    out = check_branch_settings(SLUG, gh_read=_settings(REPO_OK, protection))
+    assert out["status"] == UNKNOWN

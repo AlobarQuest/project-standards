@@ -5,13 +5,21 @@ never a pass and never a defect in the repository: the operator's environment
 being wrong says nothing about the repository.
 """
 
+import json
 import tomllib
 
 from .factory_target import FactoryTargetError, parse_declaration
 from .matrix import PASS, UNKNOWN, VIOLATION
-from .onboard_checks import _gh_read, _remote_contents, _result
+from .onboard_checks import (
+    _PROTECTION_PLAN_LIMITED,
+    _PROTECTION_UNSET,
+    _gh_read,
+    _remote_contents,
+    _result,
+)
 
 DECLARATION_CHECK = "sds.declaration"
+BRANCH_SETTINGS_CHECK = "sds.branch_settings"
 INVENTORY_CHECK = "sds.cred_inventory"
 INVENTORY_FILE = ".cred-consumers.toml"
 DECLARATION_FILE = "factory-target.toml"
@@ -123,3 +131,119 @@ def check_cred_inventory(slug: str, gh_read=_gh_read) -> dict:
             fix="add the missing gh-actions-secret consumers to the named inventories",
         )
     return _result(INVENTORY_CHECK, PASS)
+
+
+def _read_object(endpoint: str, gh_read) -> tuple[dict | None, str]:
+    """GET `endpoint` as a JSON object, or (None, why it could not be read)."""
+    text, why = gh_read(["api", endpoint])
+    if text is None:
+        return None, why or "the read failed"
+    try:
+        body = json.loads(text)
+    except json.JSONDecodeError, RecursionError:
+        return None, "the response is not JSON"
+    if not isinstance(body, dict):
+        return None, "the response is not a JSON object"
+    return body, ""
+
+
+class _Unreadable(Exception):
+    """A response had a shape the check cannot judge."""
+
+
+def _branch_unknown(detail_id: str, message: str) -> dict:
+    return _result(BRANCH_SETTINGS_CHECK, UNKNOWN, details=[_detail(detail_id, message)])
+
+
+def _merge_details(repo: dict) -> list[dict]:
+    details = []
+    if repo.get("allow_squash_merge") is not True:
+        details.append(_detail("sds.squash-disallowed", "squash merging is not allowed"))
+    if repo.get("squash_merge_commit_message") != "COMMIT_MESSAGES":
+        details.append(
+            _detail(
+                "sds.squash-message",
+                "squash_merge_commit_message is not COMMIT_MESSAGES "
+                "(the landing trailer depends on it)",
+            )
+        )
+    return details
+
+
+def _object_field(body: dict, field: str) -> dict:
+    value = body.get(field)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise _Unreadable(f"{field} is not an object")
+    return value
+
+
+def _protection_details(protection: dict, branch: str) -> list[dict]:
+    checks = _object_field(protection, "required_status_checks")
+    reviews = _object_field(protection, "required_pull_request_reviews")
+    count = reviews.get("required_approving_review_count", 0)
+    if isinstance(count, bool) or not isinstance(count, int):
+        raise _Unreadable("required_approving_review_count is not an integer")
+    details = []
+    if not checks.get("contexts") and not checks.get("checks"):
+        details.append(_detail("sds.no-required-check", f"{branch} requires no status check"))
+    if checks.get("strict") is True:
+        details.append(
+            _detail("sds.strict", "required status checks are strict (up-to-date branch)")
+        )
+    if count > 0:
+        details.append(
+            _detail("sds.review-required", f"{branch} requires {count} approving review(s)")
+        )
+    return details
+
+
+def check_branch_settings(slug: str, gh_read=_gh_read) -> dict:
+    """Merge settings and default-branch protection a factory target needs.
+
+    Reads only. The rationale for each setting is step 9 of the orchestrator's
+    onboarding runbook; the review count is flagged but never recommended.
+    """
+    repo, why = _read_object(f"repos/{slug}", gh_read)
+    if repo is None:
+        return _branch_unknown("sds.settings-unreadable", f"repos/{slug} could not be read: {why}")
+    branch = repo.get("default_branch")
+    if not isinstance(branch, str) or not branch:
+        return _branch_unknown(
+            "sds.settings-unreadable", f"repos/{slug} names no readable default_branch"
+        )
+
+    details = _merge_details(repo)
+    protection, why = _read_object(f"repos/{slug}/branches/{branch}/protection", gh_read)
+    if protection is not None:
+        try:
+            details += _protection_details(protection, branch)
+        except _Unreadable as error:
+            return _branch_unknown("sds.protection-unreadable", str(error))
+    elif _PROTECTION_PLAN_LIMITED in why.lower():
+        return _branch_unknown(
+            "sds.protection-unavailable",
+            f"branch protection is not available for {slug} on its plan",
+        )
+    elif _PROTECTION_UNSET in why.lower():
+        details.append(_detail("sds.no-protection", f"{branch} has no branch protection"))
+    else:
+        return _branch_unknown(
+            "sds.protection-unreadable", f"{branch} protection could not be read: {why}"
+        )
+
+    if repo.get("allow_auto_merge") is not True:
+        details.append(_detail("sds.auto-merge-off", "auto-merge is not enabled"))
+    if details:
+        return _result(
+            BRANCH_SETTINGS_CHECK,
+            VIOLATION,
+            details=details,
+            fix=(
+                "set the merge and branch-protection settings in step 9 of the orchestrator "
+                "runbook, docs/operations/onboarding-a-target.md "
+                f"(repos/{slug}; Devon runs this, the kit never writes settings)"
+            ),
+        )
+    return _result(BRANCH_SETTINGS_CHECK, PASS)
