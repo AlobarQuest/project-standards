@@ -236,21 +236,60 @@ def test_plan_limited_protection_is_unknown():
     assert _ids(out) == ["sds.protection-unavailable"]
 
 
-@pytest.mark.parametrize("body", ["[]", "not json", "null", '{"default_branch": 7}'])
-def test_malformed_repo_body_is_unknown(body):
-    out = check_branch_settings(SLUG, gh_read=_settings(body, PROTECTION_OK))
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "[]",
+        "not json",
+        "null",
+        {"default_branch": 7},
+        {**REPO_OK, "allow_squash_merge": "true"},
+        {**REPO_OK, "allow_auto_merge": 1},
+        {**REPO_OK, "squash_merge_commit_message": 5},
+    ],
+)
+def test_malformed_repo_body_is_unknown(repo):
+    out = check_branch_settings(SLUG, gh_read=_settings(repo, PROTECTION_OK))
     assert out["status"] == UNKNOWN
+    assert _ids(out) == ["sds.settings-unreadable"]
 
 
 @pytest.mark.parametrize(
     "protection",
     [
         "[]",
+        "not json",
+        "null",
         {"required_status_checks": []},
         {"required_pull_request_reviews": "x"},
         {"required_pull_request_reviews": {"required_approving_review_count": "1"}},
+        {"required_status_checks": {"strict": "true", "contexts": ["Quality"]}},
+        {"required_status_checks": {"strict": 1, "contexts": ["Quality"]}},
+        {"required_status_checks": {"contexts": "Quality"}},
+        {"required_status_checks": {"contexts": ["Quality"], "checks": "x"}},
     ],
 )
 def test_malformed_protection_body_is_unknown(protection):
     out = check_branch_settings(SLUG, gh_read=_settings(REPO_OK, protection))
     assert out["status"] == UNKNOWN
+    assert _ids(out) == ["sds.protection-unreadable"]
+
+
+def test_absent_strict_passes():
+    protection = {"required_status_checks": {"contexts": ["Quality"]}}
+    assert check_branch_settings(SLUG, gh_read=_settings(REPO_OK, protection))["status"] == PASS
+
+
+def test_protection_is_read_for_the_default_branch():
+    requested = []
+
+    def gh_read(args):
+        requested.append(args[-1])
+        if args[-1] == f"repos/{SLUG}":
+            return json.dumps({**REPO_OK, "default_branch": "trunk"}), ""
+        if args[-1] == f"repos/{SLUG}/branches/trunk/protection":
+            return json.dumps(PROTECTION_OK), ""
+        return None, "HTTP 500"
+
+    assert check_branch_settings(SLUG, gh_read=gh_read)["status"] == PASS
+    assert f"repos/{SLUG}/branches/trunk/protection" in requested

@@ -155,11 +155,22 @@ def _branch_unknown(detail_id: str, message: str) -> dict:
     return _result(BRANCH_SETTINGS_CHECK, UNKNOWN, details=[_detail(detail_id, message)])
 
 
-def _merge_details(repo: dict) -> list[dict]:
+def _typed(body: dict, field: str, kind: type):
+    """`body[field]` when it is a `kind`, None when absent or null; anything else is unjudgeable."""
+    value = body.get(field)
+    if value is not None and not isinstance(value, kind):
+        raise _Unreadable(f"{field} is not a {kind.__name__}")
+    return value
+
+
+def _merge_details(repo: dict) -> tuple[list[dict], bool]:
+    squash = _typed(repo, "allow_squash_merge", bool)
+    message = _typed(repo, "squash_merge_commit_message", str)
+    auto = _typed(repo, "allow_auto_merge", bool)
     details = []
-    if repo.get("allow_squash_merge") is not True:
+    if squash is not True:
         details.append(_detail("sds.squash-disallowed", "squash merging is not allowed"))
-    if repo.get("squash_merge_commit_message") != "COMMIT_MESSAGES":
+    if message != "COMMIT_MESSAGES":
         details.append(
             _detail(
                 "sds.squash-message",
@@ -167,28 +178,23 @@ def _merge_details(repo: dict) -> list[dict]:
                 "(the landing trailer depends on it)",
             )
         )
-    return details
-
-
-def _object_field(body: dict, field: str) -> dict:
-    value = body.get(field)
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise _Unreadable(f"{field} is not an object")
-    return value
+    return details, auto is not True
 
 
 def _protection_details(protection: dict, branch: str) -> list[dict]:
-    checks = _object_field(protection, "required_status_checks")
-    reviews = _object_field(protection, "required_pull_request_reviews")
+    checks = _typed(protection, "required_status_checks", dict) or {}
+    reviews = _typed(protection, "required_pull_request_reviews", dict) or {}
     count = reviews.get("required_approving_review_count", 0)
     if isinstance(count, bool) or not isinstance(count, int):
         raise _Unreadable("required_approving_review_count is not an integer")
+    strict = _typed(checks, "strict", bool)
+    contexts = _typed(checks, "contexts", list)
+    named_checks = _typed(checks, "checks", list)
+    required = contexts or named_checks
     details = []
-    if not checks.get("contexts") and not checks.get("checks"):
+    if not required:
         details.append(_detail("sds.no-required-check", f"{branch} requires no status check"))
-    if checks.get("strict") is True:
+    if strict is True:
         details.append(
             _detail("sds.strict", "required status checks are strict (up-to-date branch)")
         )
@@ -214,7 +220,10 @@ def check_branch_settings(slug: str, gh_read=_gh_read) -> dict:
             "sds.settings-unreadable", f"repos/{slug} names no readable default_branch"
         )
 
-    details = _merge_details(repo)
+    try:
+        details, auto_merge_off = _merge_details(repo)
+    except _Unreadable as error:
+        return _branch_unknown("sds.settings-unreadable", str(error))
     protection, why = _read_object(f"repos/{slug}/branches/{branch}/protection", gh_read)
     if protection is not None:
         try:
@@ -233,7 +242,7 @@ def check_branch_settings(slug: str, gh_read=_gh_read) -> dict:
             "sds.protection-unreadable", f"{branch} protection could not be read: {why}"
         )
 
-    if repo.get("allow_auto_merge") is not True:
+    if auto_merge_off:
         details.append(_detail("sds.auto-merge-off", "auto-merge is not enabled"))
     if details:
         return _result(
