@@ -344,7 +344,8 @@ def read_reach(
         return _unreadable(
             "factory.app-credential-absent",
             f"${config.DISPATCH_APP_KEY_ENV} is not set, so the App's reach was not measured",
-            f"export {config.DISPATCH_APP_KEY_ENV} before running",
+            f"export {config.DISPATCH_APP_KEY_ENV} before running, or for a manual run `set -a; "
+            ". ~/.portfolio/credentials.env; set +a`",
         )
     app_id = app_id or config.dispatch_app_id()
     installation_id = installation_id or config.dispatch_app_installation_id()
