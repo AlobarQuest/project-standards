@@ -10,6 +10,7 @@ from .init import init_repo
 from .onboard import run as onboard_run
 from .query import query
 from .scan import scan
+from .sds_ready import run as sds_ready_run
 from .triage import assign, untriaged
 from .validator import lint
 
@@ -40,10 +41,14 @@ def main(argv=None) -> int:  # noqa: C901
     p.add_argument("--has-backlog", action="store_true")
     p = sub.add_parser("onboard")
     p.add_argument("repo")
+    p = sub.add_parser("sds-ready")
+    p.add_argument("repo")
     args = parser.parse_args(argv)
 
     if args.cmd == "onboard":
         return onboard_run(Path(args.repo))
+    if args.cmd == "sds-ready":
+        return sds_ready_run(Path(args.repo))
 
     if args.cmd == "init":
         print(f"initialized {init_repo(Path(args.repo), tier=args.tier).path}")

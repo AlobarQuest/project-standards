@@ -164,6 +164,24 @@ for where `init` best fits in a project's lifecycle.
 
 ---
 
+## SDS readiness: `portfolio sds-ready <repo>`
+
+Run `portfolio sds-ready <path-to-checkout>` to learn whether a repository is ready for the
+SDS factory. The command runs the onboarding checks and the SDS checks, sorts each result by who
+acts on it, and prints a summary to stderr. It reads GitHub and App Brain and writes nothing
+to them or to the repository's working tree.
+
+Exit codes: `0` ready, `1` not ready, `2` the command could not run (not a directory, no GitHub
+`origin`, or an internal error), `3` refused (a recorded decision makes the repository ineligible).
+
+Output files, under `~/.portfolio/onboarding/<repo-name>/`:
+
+- `readiness.json`: the full check list, written on every run that reaches assessment.
+- `HANDOFF.md`: the work for a build agent. Written only when repository work remains.
+- `TASKS.md`: Devon's tasks. Written only when any remain.
+
+A run deletes `HANDOFF.md` or `TASKS.md` when it has nothing to say, so a stale file never survives.
+
 ## Foundation conformance matrix
 
 A repo × standard conformance matrix for **foundational repos** — those that provide standards,

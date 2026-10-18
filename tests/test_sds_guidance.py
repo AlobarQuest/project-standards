@@ -1,7 +1,9 @@
 import re
+import subprocess
 
 import pytest
 
+from portfolio import config, onboard_checks, sds_ready
 from portfolio.sds_checks import EVIDENCE_PATH
 from portfolio.sds_guidance import EXCLUDED, GUIDANCE, OWNERS, REFUSAL_DETAIL_IDS
 
@@ -39,8 +41,30 @@ ANTI_GOAL_1 = (
 )
 
 
-def test_every_check_the_command_runs_has_guidance_or_is_excluded():
-    assert CHECK_IDS <= set(GUIDANCE) | set(EXCLUDED)
+def test_the_command_emits_exactly_the_guided_and_excluded_ids(
+    make_repo, portfolio_env, monkeypatch
+):
+    """`assess` cannot notice a guided check the command forgot to run."""
+    repo = make_repo("widget")
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://github.com/AlobarQuest/widget.git"],
+        cwd=repo,
+        check=True,
+    )
+    for var in (config.FACTORY_PAT_ENV, config.APP_BRAIN_KEY_ENV, config.DISPATCH_APP_KEY_ENV):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(onboard_checks, "registered_profiles", lambda: ["web"])
+    monkeypatch.setattr(
+        onboard_checks,
+        "check_security_clean",
+        lambda repo: {"id": "security.clean", "status": "pass", "details": []},
+    )
+    checks = sds_ready.run_all_checks(
+        repo, lambda args: None, lambda args: (None, "no"), fetch=lambda slug: {"landing": "inert"}
+    )
+    ids = [c["id"] for c in checks]
+    assert len(ids) == len(set(ids))
+    assert set(ids) == set(GUIDANCE) | set(EXCLUDED)
 
 
 def test_guidance_covers_exactly_the_owner_table():
