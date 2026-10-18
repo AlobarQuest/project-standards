@@ -319,9 +319,12 @@ def check_protection(slug: str, gh_read=_gh_read) -> dict:
             VIOLATION,
             details=[{"id": "repo.unprotected", "message": "main has no branch protection"}],
             fix=(
-                f"gh api -X PUT repos/{slug}/branches/main/protection "
-                "-f required_pull_request_reviews.required_approving_review_count=1 "
-                "(Devon runs this; the kit never writes settings)"
+                "set branch protection on main with at least one required status "
+                "check named by its JOB name, `strict: false`, and no required "
+                "review count (a solo account cannot approve "
+                "its own pull requests); see step 9 of the orchestrator runbook, "
+                "docs/operations/onboarding-a-target.md "
+                f"(repos/{slug}; Devon runs this, the kit never writes settings)"
             ),
         )
     return _result(
@@ -856,6 +859,13 @@ def check_ci_executed(repo: Path, gh=_gh) -> dict:
             UNKNOWN,
             details=[{"id": "ci.no-origin", "message": "cannot derive GitHub slug from origin"}],
             fix=f"add a GitHub origin remote to {repo}",
+        )
+    if not (repo / ".github/workflows/quality.yml").is_file():
+        return _result(
+            "ci.executed",
+            UNKNOWN,
+            details=[{"id": "ci.no-workflow", "message": "no .github/workflows/quality.yml"}],
+            fix="add the Quality workflow: see code.onboarded",
         )
     listing = gh(
         [

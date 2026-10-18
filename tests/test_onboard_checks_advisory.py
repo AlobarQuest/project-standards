@@ -41,7 +41,7 @@ def test_protection_absent_fires_report_only():
     result = check_protection("AlobarQuest/x", gh_read=_gh_protection(None, _UNSET))
     assert result["status"] == "violation"
     assert result["remediation"] is None  # Q5: settings fix, never a queue item
-    assert "gh api" in result["fix"]
+    assert "step 9" in result["fix"]
 
 
 def test_protection_present_passes():
@@ -110,3 +110,10 @@ def test_standards_drift_fires(make_repo, standards_env):
 def test_standards_current_passes(make_repo, standards_env):
     repo = make_repo("x", files={"PROJECT.md": FRONT.format(pin="1.0"), "Cargo.toml": ""})
     assert check_standards_pinned(repo)["status"] == "pass"
+
+
+def test_unprotected_fix_never_requires_a_review():
+    result = check_protection("o/r", gh_read=lambda a: (None, "HTTP 404: Branch not protected"))
+    assert result["status"] == "violation"
+    assert "required_approving_review_count" not in result["fix"]
+    assert "strict" in result["fix"]
