@@ -8,3 +8,10 @@ build/
 
 # Build-session worktrees (see CLAUDE.md: build sessions get their own worktree).
 .worktrees/
+
+# Secret files (security-standards bws.secret-files-gitignored). This repo now reads BWS;
+# nothing it fetches is ever written into the tree, and these keep a stray one out of git.
+*.env
+*.key
+*.password
+*-migration/
