@@ -43,6 +43,13 @@ portfolio-scan.sh          # prints e.g. {"projects": 53, "fails": 9, "warns": 7
   FAIL (e.g. `bad_yaml`) = a real manifest problem.
 - Trigger an off-schedule run: `launchctl start com.devon.portfolio-scan`
 - Watch history: `tail -f ~/.portfolio/scan.log`
+- Fetches `FACTORY_PR_TOKEN` from BWS (UUID in `.bws-secrets.toml`, narrow `sds-operator`
+  identity from the Keychain) at the start of every run; a value in
+  `~/.portfolio/credentials.env` or the calling shell is ignored. `APP_BRAIN_READ_KEY` and
+  `DISPATCH_APP_PRIVATE_KEY_B64` still come from `credentials.env`.
+- Reports to the Healthchecks check `portfolio-scan` (resolved by exact name): `/start` before the
+  fetch, success at the end, `/fail` on any non-zero exit. Exit `3` means the scan ran but the
+  token could not be read, so its checks reported `unknown`.
 
 ## `portfolio-triage.sh` — clear the inbox
 
