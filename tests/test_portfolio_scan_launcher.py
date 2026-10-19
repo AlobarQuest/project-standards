@@ -42,6 +42,7 @@ esac
 FAKE_BWS = f"""#!/bin/bash
 [ -z "${{FORCE_COLOR+x}}${{CLICOLOR_FORCE+x}}" ] || {{ echo "colour forced" >&2; exit 9; }}
 case " $* " in *" --color no "*) ;; *) echo "no --color no" >&2; exit 9 ;; esac
+printf 'BWS:%s\\n' "$3" >> "$FAKE_CURL_LOG"
 case "$3" in
   {HC_KEY_UUID}) [ "$BWS_ACCESS_TOKEN" = "{BROAD}" ] || exit 7; value="{HC_KEY}" ;;
   {PAT_UUID})
@@ -132,6 +133,7 @@ def run(tmp_path):
         urls = curl_log.read_text().split() if curl_log.exists() else []
         assert not [u for u in urls if u.startswith(WRONG)], "a near-miss check was pinged"
         pings = [u.removeprefix(PING_URL) or "/" for u in urls if u.startswith(PING_URL)]
+        proc.calls = urls  # every curl URL and `BWS:<uuid>` fetch, in order
         return proc, pings, (seen.read_text() if seen.exists() else None), log
 
     return _run
@@ -143,6 +145,14 @@ def test_fetched_token_reaches_the_scan_and_pings_success(run):
     assert pings == ["/start", "/"]
     assert seen == PAT
     assert "pat=bws" in log
+    # The executor's proof rests on this order: `/start` lands before the keeper is fetched.
+    assert proc.calls == [
+        f"BWS:{HC_KEY_UUID}",
+        "https://healthchecks.io/api/v3/checks/",
+        f"{PING_URL}/start",
+        f"BWS:{PAT_UUID}",
+        PING_URL,
+    ]
 
 
 def test_fetch_failure_pings_fail_and_still_runs_the_scan_without_the_token(run):
