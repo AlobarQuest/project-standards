@@ -43,7 +43,8 @@ mkdir -p "$HOME/.portfolio"
 # to resolve the check logs one line and the scan runs unwatched.
 #
 # The API key lives in a BWS project only the BROAD machine account can read; FACTORY_PR_TOKEN
-# lives in one only the NARROW `sds-operator` account can. Each identity is read from the Keychain
+# lives in Rotation / Keepers, which the NARROW `sds-operator` account reads by a direct grant on
+# that one secret. Each identity is read from the Keychain
 # into its own local variable and passed per call, never exported as BWS_ACCESS_TOKEN, because one
 # ambient identity would make the other fetch fail. Every parsed `bws` call passes `--color no`
 # with FORCE_COLOR and CLICOLOR_FORCE removed: either variable makes `bws` wrap its JSON in ANSI
