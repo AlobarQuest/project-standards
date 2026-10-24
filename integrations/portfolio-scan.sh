@@ -49,8 +49,8 @@ mkdir -p "$HOME/.portfolio"
 # ambient identity would make the other fetch fail. Every parsed `bws` call passes `--color no`
 # with FORCE_COLOR and CLICOLOR_FORCE removed: either variable makes `bws` wrap its JSON in ANSI
 # escapes even on a pipe.
-HC_API_KEY_UUID="260cc8ad-f170-44cc-a672-b47000df3350"
-HC_API="https://healthchecks.io/api/v3/checks/"
+HC_API_KEY_UUID="51509d5e-64f5-4781-ae82-b4ed00b644e1"
+HC_API="https://healthcheck.alobar.net/api/v3/checks/"
 HC_CHECK_NAME="portfolio-scan"
 HC_PING_URL=""
 

@@ -17,7 +17,7 @@ import pytest
 LAUNCHER = Path(__file__).resolve().parents[1] / "integrations" / "portfolio-scan.sh"
 
 PAT_UUID = "a3240c2e-92d7-4b32-a726-b49b0135565a"
-HC_KEY_UUID = "260cc8ad-f170-44cc-a672-b47000df3350"
+HC_KEY_UUID = "51509d5e-64f5-4781-ae82-b4ed00b644e1"
 BROAD = "fake-broad-identity-5e1f"
 NARROW = "fake-narrow-identity-8c2a"
 PAT = "fake-pat-from-bws-7f3a"
@@ -61,7 +61,7 @@ for arg in "$@"; do
   esac
 done
 printf '%s\\n' "$url" >> "$FAKE_CURL_LOG"
-if [ "$url" = "https://healthchecks.io/api/v3/checks/" ]; then
+if [ "$url" = "https://healthcheck.alobar.net/api/v3/checks/" ]; then
   case " $* " in *"X-Api-Key: {HC_KEY}"*) ;; *) exit 22 ;; esac
   printf '%s' "$FAKE_LISTING"
 fi
@@ -148,7 +148,7 @@ def test_fetched_token_reaches_the_scan_and_pings_success(run):
     # The executor's proof rests on this order: `/start` lands before the keeper is fetched.
     assert proc.calls == [
         f"BWS:{HC_KEY_UUID}",
-        "https://healthchecks.io/api/v3/checks/",
+        "https://healthcheck.alobar.net/api/v3/checks/",
         f"{PING_URL}/start",
         f"BWS:{PAT_UUID}",
         PING_URL,
