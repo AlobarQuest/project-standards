@@ -1,0 +1,5 @@
+serves_site = false
+reason = "project-standards is a Python command-line toolkit (the portfolio CLI) plus shell integration scripts. It has no web framework or HTTP server in src/, no Dockerfile, no deploy workflow, and no Coolify resource; the only workflow is the Quality check. It serves no website, API route or health endpoint, and the readiness changes touch only PROJECT.md frontmatter and this file."
+baseline_commit = "13cb881dbdd3884a8f220f4debd3736efdbf7846"
+after_commit = "e35eb7ff0427c381cf0cc7aae41c4a91e206d17c"
+unexplained_differences = []
