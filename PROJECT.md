@@ -9,6 +9,7 @@ version_source: pyproject
 updated: '2026-07-02'
 foundation: true
 foundation_contract: 1
+delivery_profile: dependency-update
 applicable_standards:
   project: '1.0'
   security: '1.0'
