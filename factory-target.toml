@@ -1,4 +1,4 @@
 # Whether the SDS factory may be dispatched work in this repository.
 # Absence of this file means NO -- participation is declared, never assumed.
-factory_target = false
-factory_target_reason = "ADR-0015 reaffirmed 2026-08-17 — maintained by a different mechanism, beginning manual and automated over time; the 2026-08-07 amendment admitting this repo was reversed and its caller workflow removed."
+factory_target = true
+factory_target_reason = "a dispatch target; Devon decided 2026-10-26 that project-standards gets the SDS app-changes service (orchestrator ADR-0015 amendment 4, reversing the 2026-08-17 reinstatement for this repository)"
