@@ -108,13 +108,20 @@ def build_records(roots, today: date | None = None) -> list[ProjectRecord]:
     return records
 
 
-def to_json(records, untriaged_count: int) -> str:
+def to_json(records, untriaged_count: int, member_record_unreadable: str | None = None) -> str:
     return json.dumps(
-        {"untriaged_count": untriaged_count, "projects": [asdict(r) for r in records]}, indent=2
+        {
+            "untriaged_count": untriaged_count,
+            "member_record_unreadable": member_record_unreadable,
+            "projects": [asdict(r) for r in records],
+        },
+        indent=2,
     )
 
 
-def render_digest(records, untriaged_count: int) -> str:
+def render_digest(
+    records, untriaged_count: int, member_record_unreadable: str | None = None
+) -> str:
     lines = [
         "# Portfolio",
         "",
@@ -136,7 +143,12 @@ def render_digest(records, untriaged_count: int) -> str:
             lines.append(f"### {r.name}")
             lines += [f"- {('(' + i.priority + ') ') if i.priority else ''}{i.text}" for i in items]
             lines.append("")
-    return "\n".join(lines) + "\n" + render_compliance(records) + render_factory(records)
+    return (
+        "\n".join(lines)
+        + "\n"
+        + render_compliance(records)
+        + render_factory(records, member_record_unreadable)
+    )
 
 
 def _finding_lines(records) -> list[str]:
@@ -194,18 +206,26 @@ def render_compliance(records) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_factory(records) -> str:
-    """Q2 — can the factory work in each repository that declares a delivery profile?
+def render_factory(records, member_record_unreadable: str | None = None) -> str:
+    """Q2 — can the factory work in each SDS member the record grants app changes?
 
     Repositories outside that scope are absent rather than rendered as a row of
-    dashes: the section answers a question about the repositories that want to
-    be factory targets, and padding it with the other fifty-five would bury
-    them.
+    dashes: the section answers a question about the repositories that are
+    factory targets, and padding it with the other fifty-five would bury them.
+
+    A run that could not read the member record measured nothing, and the
+    section says so with the reason rather than vanishing: an empty section
+    would read like a night with nothing to report.
 
     Every non-passing result names its check id and its detail message. Five
     more status symbols nobody can act on would be five more of the defect this
     section exists to correct.
     """
+    if member_record_unreadable:
+        return (
+            "\n## Factory capability (Q2)\n\n"
+            f"Not measured: the SDS member record could not be read ({member_record_unreadable}).\n"
+        )
     scoped = [r for r in sorted(records, key=lambda x: x.name) if r.factory]
     if not scoped:
         return ""
@@ -214,7 +234,7 @@ def render_factory(records) -> str:
         "",
         "## Factory capability (Q2)",
         "",
-        "Whether the factory CAN work in each repository declaring a delivery profile.",
+        "Whether the factory CAN work in each member granted app changes.",
         "Green means the repository does not fail in a way this estate has already",
         "failed — it is not proof that a dispatch would work.",
         "",

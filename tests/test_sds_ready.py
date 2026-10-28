@@ -211,3 +211,26 @@ def test_onboard_measures_factory_checks_on_a_repository_declaring_no_profile(re
     factory = [c for c in checks if c["id"].startswith("factory.")]
     assert factory
     assert "not-applicable" not in {c["status"] for c in factory}
+
+
+def test_onboard_reports_unknown_factory_checks_for_a_repository_with_no_origin(
+    make_repo, monkeypatch
+):
+    """With no origin there is no repository to probe: never a bare directory name."""
+    from portfolio.factory_checks import FACTORY_CHECKS
+
+    bare = make_repo("bare-dir", files={"pyproject.toml": ""})
+    monkeypatch.setattr(onboard_checks, "check_git_current", lambda repo: _check("git.current"))
+    monkeypatch.setattr(
+        onboard_checks, "check_security_clean", lambda repo: _check("security.clean")
+    )
+    monkeypatch.setenv(config.FACTORY_PAT_ENV, "test-pat-value")
+    monkeypatch.setattr(
+        "portfolio.factory_checks._token_gh_read",
+        lambda _token: pytest.fail("a bare directory name must not reach GitHub"),
+    )
+    checks = sds_ready.onboard._run_checks(bare, _gh, None, _gh_read)
+    factory = {c["id"]: c for c in checks if c["id"] in FACTORY_CHECKS}
+    assert set(factory) == set(FACTORY_CHECKS)
+    assert {c["status"] for c in factory.values()} == {"unknown"}
+    assert factory["factory.pat_access"]["details"][0]["id"] == "factory.pat_access.no-origin"

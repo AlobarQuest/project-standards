@@ -57,8 +57,10 @@ def scan(
     untriaged_count = sum(1 for i in read_inbox() if i.status == "untriaged")
     home = config.portfolio_home()
     home.mkdir(parents=True, exist_ok=True)
-    config.json_path().write_text(to_json(records, untriaged_count))
-    config.digest_path().write_text(render_digest(records, untriaged_count))
+    config.json_path().write_text(to_json(records, untriaged_count, member_record_unreadable))
+    config.digest_path().write_text(
+        render_digest(records, untriaged_count, member_record_unreadable)
+    )
     fails = sum(1 for r in records for f in r.findings if f["severity"] == "FAIL")
     warns = sum(1 for r in records for f in r.findings if f["severity"] == "WARN")
     compliance_violations = sum(

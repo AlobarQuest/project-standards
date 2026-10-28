@@ -801,7 +801,7 @@ def check_app_access(slug: str, reach=None) -> dict:
     )
 
 
-def run_factory_checks(slug: str, gh=_gh, reach=None) -> list[dict]:
+def run_factory_checks(slug: str | None, gh=_gh, reach=None) -> list[dict]:
     """The five Q2 capability checks in this module, in `FACTORY_CHECKS` order.
 
     `runner.caller` is a Q2 check too and is NOT here: it predates this module
@@ -815,7 +815,26 @@ def run_factory_checks(slug: str, gh=_gh, reach=None) -> list[dict]:
     Every check measures the repository it is given. Which repositories are
     measured is the caller's question: `sweep` answers it from the member
     record, and `portfolio onboard` measures the repository it was named.
+
+    With no slug (a working copy with no GitHub origin) there is no repository
+    to ask GitHub, App Brain or the App about, so each check is `unknown` and
+    says so rather than probing a bare directory name.
     """
+    if slug is None:
+        return [
+            _result(
+                check_id,
+                UNKNOWN,
+                details=[
+                    {
+                        "id": f"{check_id}.no-origin",
+                        "message": "cannot derive a GitHub slug from the origin remote",
+                    }
+                ],
+                fix="add a GitHub origin remote to this repository",
+            )
+            for check_id in FACTORY_CHECKS
+        ]
     return [
         check_pat_access(slug),
         check_pat_scope(),
@@ -892,9 +911,11 @@ def sweep(
 
     `granted` is the lowercased `owner/repo` slugs `member_scope.read_granted`
     answers. A working copy is measured when its origin names one of them, so
-    nothing it declares about itself can put it in the sweep or take it out. The
-    rest are absent from the result rather than carrying `not-applicable` rows,
-    so the sweep's cost stays proportional to the members (seven, not sixty-one).
+    nothing it declares about itself can put it in the sweep. A member with no
+    working copy here, or one whose origin is not GitHub, has no row; the work
+    carrier reads a missing row as `unknown`, never as capable. The rest are
+    absent from the result rather than carrying `not-applicable` rows, so the
+    sweep's cost stays proportional to the members (eight, not sixty-one).
     """
     gh = gh or memoizing_gh()
     gh_read = memoizing_gh_read(gh_read) if gh_read else memoizing_gh_read()

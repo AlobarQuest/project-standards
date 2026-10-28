@@ -62,7 +62,8 @@ def _run_checks(
     registered: list[str] | None,
     gh_read=onboard_checks._gh_read,
 ) -> list[dict]:
-    slug = onboard_checks.repo_slug(repo) or repo.name
+    origin = onboard_checks.repo_slug(repo)
+    slug = origin or repo.name
     return [
         onboard_checks.check_git_current(repo),
         _project_manifest_check(repo),
@@ -75,7 +76,7 @@ def _run_checks(
         onboard_checks.check_protection(slug, gh_read=gh_read),
         onboard_checks.check_backlog_hygiene(repo),
         onboard_checks.check_standards_pinned(repo),
-        *factory_checks.run_factory_checks(slug, gh=gh),
+        *factory_checks.run_factory_checks(origin, gh=gh),
     ]
 
 

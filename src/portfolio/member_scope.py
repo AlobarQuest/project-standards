@@ -3,15 +3,17 @@
 The member record (orchestrator ADR-0058) is the one list of repositories the SDS maintains,
 with an explicit per-service grant on each. A repository is a factory target exactly when it is
 granted `app_changes`: the orchestrator's daily membership check holds that grant equal to each
-repository's `factory-target.toml`. So that grant is the sweep's scope, and the sweep never
-infers scope from what a working copy declares.
+repository's `factory-target.toml`. The sweep measures those, and the members whose grant is
+`remediating` (readiness found gaps and remediation work exists), because Q2 is how that work is
+seen to land. It never infers scope from what a working copy declares.
 
-INCOMPLETE IS SAID OUT LOUD, NEVER IMPLIED BY A SHORTER LIST. An unset token, an unreachable or
-refusing orchestrator, a body that is not the member record, and a record that grants
-`app_changes` to nobody all raise `MemberRecordUnreadable` with the reason. The record is one
-read, so there is no partial answer.
+INCOMPLETE IS SAID OUT LOUD, NEVER IMPLIED BY A SHORTER LIST. An unset token, a URL that is not
+https, an unreachable or refusing orchestrator, a body that is not the member record, and a
+record that measures no repository all raise `MemberRecordUnreadable` with the reason. The record
+is one read, so there is no partial answer.
 """
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -19,6 +21,7 @@ import urllib.request
 from . import config
 
 SERVICE = "app_changes"
+MEASURED_STATES = frozenset({"granted", "remediating"})
 _MEMBERS_ROUTE = "/api/v1/members"
 _USER_AGENT = "project-standards-conformance-kit/1 (+AlobarQuest/project-standards)"
 
@@ -45,7 +48,7 @@ def _fetch(url: str, token: str, timeout: float = 15.0) -> object:
         raise MemberRecordUnreadable(
             f"the orchestrator answered {error.code} for GET {_MEMBERS_ROUTE}"
         ) from None
-    except (urllib.error.URLError, OSError) as error:
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
         raise MemberRecordUnreadable(
             f"the member record is unreachable: {type(error).__name__}"
         ) from None
@@ -56,8 +59,15 @@ def _fetch(url: str, token: str, timeout: float = 15.0) -> object:
         ) from None
 
 
+def _slug(member: dict) -> str:
+    repository = member["repository"]
+    if not isinstance(repository, str) or "/" not in repository:
+        raise TypeError("repository")
+    return repository.lower()
+
+
 def granted(body: object) -> frozenset[str]:
-    """The live members granted `app_changes`, as lowercased `owner/repo` slugs."""
+    """The live members whose `app_changes` grant is measured, as lowercased `owner/repo` slugs."""
     try:
         if not isinstance(body, dict):
             raise TypeError("body")
@@ -65,9 +75,9 @@ def granted(body: object) -> frozenset[str]:
         if not isinstance(members, list):
             raise TypeError("members")
         slugs = frozenset(
-            str(m["repository"]).lower()
+            _slug(m)
             for m in members
-            if m["state"] != "retired" and m["grants"][SERVICE]["state"] == "granted"
+            if m["state"] != "retired" and m["grants"][SERVICE]["state"] in MEASURED_STATES
         )
     except KeyError, TypeError:
         raise MemberRecordUnreadable(
@@ -83,4 +93,8 @@ def read_granted(fetch=_fetch) -> frozenset[str]:
     token = config.sds_observer_token()
     if not token:
         raise MemberRecordUnreadable(f"${config.SDS_OBSERVER_TOKEN_ENV} is not set")
-    return granted(fetch(f"{config.sds_url().rstrip('/')}{_MEMBERS_ROUTE}", token))
+    base = config.sds_url().rstrip("/")
+    if not base.startswith("https://"):
+        # The bearer is a shared SDS credential: it goes nowhere it could be read in transit.
+        raise MemberRecordUnreadable(f"the orchestrator URL {base!r} is not https")
+    return granted(fetch(f"{base}{_MEMBERS_ROUTE}", token))

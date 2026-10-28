@@ -1,6 +1,7 @@
 """The nightly sweep's scope, read from the SDS member record."""
 
 import copy
+import http.client
 import io
 import json
 import urllib.error
@@ -17,9 +18,11 @@ from portfolio.scan import scan
 # The orchestrator's answer to GET /api/v1/members, saved from production on 2026-10-28.
 LIVE = json.loads((Path(__file__).parent / "fixtures" / "sds_members.json").read_text())
 
-APP_CHANGES_ON_2026_10_28 = frozenset(
+# The seven granted, plus factory-runner, whose app-changes grant is `remediating`.
+MEASURED_ON_2026_10_28 = frozenset(
     {
         "alobarquest/brain",
+        "alobarquest/factory-runner",
         "alobarquest/change-manager",
         "alobarquest/infraops-mcp-server",
         "alobarquest/intent-packages",
@@ -37,8 +40,8 @@ def _record(**overrides):
     return body
 
 
-def test_the_live_record_grants_app_changes_to_seven_repositories():
-    assert granted(LIVE) == APP_CHANGES_ON_2026_10_28
+def test_the_live_record_measures_the_granted_and_the_remediating():
+    assert granted(LIVE) == MEASURED_ON_2026_10_28
 
 
 def test_a_retired_member_is_not_measured():
@@ -51,6 +54,15 @@ def test_a_withdrawn_grant_is_not_measured():
     brain = next(m for m in body["members"] if m["repository"] == "AlobarQuest/brain")
     brain["grants"]["app_changes"]["state"] = "withdrawn"
     assert "alobarquest/brain" not in granted(body)
+
+
+def test_a_remediating_grant_is_measured_and_a_not_assessed_one_is_not():
+    body = _record()
+    states = {m["repository"]: m["grants"]["app_changes"]["state"] for m in body["members"]}
+    assert states["AlobarQuest/factory-runner"] == "remediating"
+    assert states["AlobarQuest/rtk"] == "not_assessed"
+    assert "alobarquest/factory-runner" in granted(body)
+    assert "alobarquest/rtk" not in granted(body)
 
 
 def test_a_record_that_grants_app_changes_to_nobody_is_unreadable():
@@ -71,6 +83,15 @@ def test_a_record_that_grants_app_changes_to_nobody_is_unreadable():
         {"members": [{"repository": "AlobarQuest/a", "state": "member"}]},
         {"members": [{"repository": "AlobarQuest/a", "state": "member", "grants": {}}]},
         {"members": ["AlobarQuest/a"]},
+        {
+            "members": [
+                {
+                    "repository": None,
+                    "state": "member",
+                    "grants": {"app_changes": {"state": "granted"}},
+                }
+            ]
+        },
     ],
 )
 def test_a_body_that_is_not_the_member_record_is_unreadable(body):
@@ -95,8 +116,28 @@ def test_the_record_is_read_from_the_configured_orchestrator(monkeypatch):
         seen.append((url, token))
         return LIVE
 
-    assert read_granted(fetch=fetch) == APP_CHANGES_ON_2026_10_28
+    assert read_granted(fetch=fetch) == MEASURED_ON_2026_10_28
     assert seen == [("https://sds.example/api/v1/members", "observer-test-value")]
+
+
+def test_the_bearer_is_never_sent_over_plain_http(monkeypatch):
+    monkeypatch.setenv(config.SDS_OBSERVER_TOKEN_ENV, "observer-test-value")
+    monkeypatch.setenv("SDS_URL", "http://sds.example")
+
+    def fetch(_url, _token):
+        pytest.fail("the bearer must not be sent")
+
+    with pytest.raises(MemberRecordUnreadable, match="not https"):
+        read_granted(fetch=fetch)
+
+
+def test_a_truncated_answer_is_unreadable_not_a_crash(monkeypatch):
+    def truncated(request, timeout):
+        raise http.client.IncompleteRead(b"{")
+
+    monkeypatch.setattr(member_scope.urllib.request, "urlopen", truncated)
+    with pytest.raises(MemberRecordUnreadable, match="unreachable"):
+        member_scope._fetch("https://sds.example/api/v1/members", "t")
 
 
 def test_a_refusal_names_the_status(monkeypatch):
@@ -151,6 +192,9 @@ def test_an_unreadable_record_measures_nothing_and_says_why(make_repo, portfolio
     )
     data = json.loads(config.json_path().read_text())
     assert all(project["factory"] == [] for project in data["projects"])
+    assert data["member_record_unreadable"] == summary["member_record_unreadable"]
+    digest = config.digest_path().read_text()
+    assert "Not measured: the SDS member record could not be read (the orchestrator" in digest
 
 
 def test_a_readable_record_reaches_the_sweep(make_repo, portfolio_env):
