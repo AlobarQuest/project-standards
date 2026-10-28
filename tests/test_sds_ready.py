@@ -56,15 +56,11 @@ def _home(portfolio_env):
     return portfolio_env / "onboarding" / "AlobarQuest__widget"
 
 
-def test_run_all_checks_measures_unscoped_repositories(repo, portfolio_env, monkeypatch):
-    seen = {}
-    real = sds_ready.onboard._run_checks
+def test_run_all_checks_measures_the_named_repository(repo, portfolio_env, monkeypatch):
+    """A named repository is measured whatever it declares: scope is the nightly sweep's
+    question, answered from the member record, and never this command's."""
+    from portfolio.factory_checks import FACTORY_CHECKS
 
-    def spy(repo, gh, registered, gh_read=None, measure_unscoped=False):
-        seen["measure_unscoped"] = measure_unscoped
-        return real(repo, gh, registered, gh_read, measure_unscoped)
-
-    monkeypatch.setattr(sds_ready.onboard, "_run_checks", spy)
     monkeypatch.setattr(onboard_checks, "registered_profiles", lambda: None)
     monkeypatch.setattr(onboard_checks, "check_git_current", lambda repo: _check("git.current"))
     monkeypatch.setattr(
@@ -72,8 +68,10 @@ def test_run_all_checks_measures_unscoped_repositories(repo, portfolio_env, monk
     )
     for var in (config.FACTORY_PAT_ENV, config.APP_BRAIN_KEY_ENV, config.DISPATCH_APP_KEY_ENV):
         monkeypatch.delenv(var, raising=False)
-    sds_ready.run_all_checks(repo, _gh, _gh_read, fetch=lambda slug: {"landing": "inert"})
-    assert seen["measure_unscoped"] is True
+    checks = sds_ready.run_all_checks(repo, _gh, _gh_read, fetch=lambda slug: {"landing": "inert"})
+    factory = [c for c in checks if c["id"] in FACTORY_CHECKS]
+    assert [c["id"] for c in factory] == list(FACTORY_CHECKS)
+    assert all(c["status"] != "not-applicable" for c in factory)
 
 
 def test_no_github_origin_exits_2_and_writes_nothing(make_repo, portfolio_env, monkeypatch, capsys):
@@ -198,13 +196,18 @@ def test_decisions_are_keyed_on_the_slug_not_the_folder(repo, portfolio_env, mon
     assert seen == ["AlobarQuest__widget"]
 
 
-def test_onboard_without_the_flag_still_reports_factory_checks_out_of_scope(repo, monkeypatch):
-    """`portfolio onboard`'s contract: no declared profile means no factory checks."""
+def test_onboard_measures_factory_checks_on_a_repository_declaring_no_profile(repo, monkeypatch):
+    """`portfolio onboard` measures the repository it is named. A `delivery_profile` once
+    decided whether these rows were measured; the member record decides the nightly sweep's
+    scope now, and a named repository is in scope by being named. Capability rows never
+    touch admission or the remediation queue, so measuring them changes only the report."""
     monkeypatch.setattr(onboard_checks, "check_git_current", lambda repo: _check("git.current"))
     monkeypatch.setattr(
         onboard_checks, "check_security_clean", lambda repo: _check("security.clean")
     )
+    for var in (config.FACTORY_PAT_ENV, config.APP_BRAIN_KEY_ENV, config.DISPATCH_APP_KEY_ENV):
+        monkeypatch.delenv(var, raising=False)
     checks = sds_ready.onboard._run_checks(repo, _gh, None, _gh_read)
     factory = [c for c in checks if c["id"].startswith("factory.")]
     assert factory
-    assert {c["status"] for c in factory} == {"not-applicable"}
+    assert "not-applicable" not in {c["status"] for c in factory}

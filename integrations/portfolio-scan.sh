@@ -3,9 +3,10 @@
 # Regenerates ~/.portfolio/portfolio.json + PORTFOLIO.md across all project roots.
 # Run manually (`bash integrations/portfolio-scan.sh`) or via the daily LaunchAgent.
 #
-# EXIT CODES. 0 the scan ran with FACTORY_PR_TOKEN read from BWS. 3 the scan ran, but the token
-# could not be read, so every check that needs it reported `unknown`. Anything else is the scan's
-# own failure, passed through. launchd discards all of these: the Healthchecks check
+# EXIT CODES. 0 the scan ran with FACTORY_PR_TOKEN and the SDS member record both read. 3 the
+# scan ran, but FACTORY_PR_TOKEN could not be read (every check that needs it reported `unknown`),
+# or the member record could not be read (no repository's factory capability was measured).
+# Anything else is the scan's own failure, passed through. launchd discards all of these: the Healthchecks check
 # `portfolio-scan` and ~/.portfolio/scan.log are what record a run, and 3 pings `/fail` like any
 # other non-zero exit.
 set -euo pipefail
@@ -147,30 +148,44 @@ hc_ping "/start"
 # and is sourced here if it exists. A FACTORY_PR_TOKEN set there or in the calling
 # shell is discarded below, before the fetch, so it can never stand in for BWS.
 FACTORY_PR_TOKEN_UUID="a3240c2e-92d7-4b32-a726-b49b0135565a"
+# THE MEMBER RECORD DECIDES WHICH REPOSITORIES ARE MEASURED (orchestrator ADR-0058): the
+# repositories granted app changes. It is read with the orchestrator's shared observe-and-report
+# bearer, which the same narrow identity reads by a direct grant and the SDS rotation executor
+# rotates; this script is a registered reader of it, verified through `portfolio-scan` like the
+# PAT. Without it the scan measures nothing and exits 3, so a missing read is never a quiet night.
+SDS_OBSERVER_TOKEN_UUID="f793576f-e9aa-4f9d-8089-b4a000b9e2d5"
 CREDENTIALS="$HOME/.portfolio/credentials.env"
 if [ -f "$CREDENTIALS" ]; then
   # shellcheck source=/dev/null
   . "$CREDENTIALS"
 fi
-unset FACTORY_PR_TOKEN
-FACTORY_PR_TOKEN=""
-pat_reason=""
+unset FACTORY_PR_TOKEN SDS_OBSERVER_TOKEN
 sds_identity="$(security find-generic-password -s 'Claude' -a 'BWS_ACCESS_TOKEN_SDS' -w \
   2>/dev/null || true)"
-if [ -z "$sds_identity" ]; then
-  pat_reason="no narrow BWS identity"
-else
-  FACTORY_PR_TOKEN="$(env -u FORCE_COLOR -u CLICOLOR_FORCE BWS_ACCESS_TOKEN="$sds_identity" \
-    bws secret get "$FACTORY_PR_TOKEN_UUID" --output json --color no 2>/dev/null \
-    | python3 -c 'import sys, json; print(json.load(sys.stdin)["value"])' 2>/dev/null || true)"
-  [ -n "$FACTORY_PR_TOKEN" ] || pat_reason="bws fetch failed or returned empty"
-fi
+# Prints the value of the secret `$1` read with the narrow identity, or nothing.
+narrow_secret() {
+  [ -n "$sds_identity" ] || return 0
+  env -u FORCE_COLOR -u CLICOLOR_FORCE BWS_ACCESS_TOKEN="$sds_identity" \
+    bws secret get "$1" --output json --color no 2>/dev/null \
+    | python3 -c 'import sys, json; print(json.load(sys.stdin)["value"])' 2>/dev/null || true
+}
+# Why `$1` (a fetched value) is empty, or nothing when it isn't.
+fetch_reason() {
+  if [ -n "$1" ]; then return 0; fi
+  if [ -z "$sds_identity" ]; then echo "no narrow BWS identity"
+  else echo "bws fetch failed or returned empty"; fi
+}
+FACTORY_PR_TOKEN="$(narrow_secret "$FACTORY_PR_TOKEN_UUID")"
+pat_reason="$(fetch_reason "$FACTORY_PR_TOKEN")"
+SDS_OBSERVER_TOKEN="$(narrow_secret "$SDS_OBSERVER_TOKEN_UUID")"
+observer_reason="$(fetch_reason "$SDS_OBSERVER_TOKEN")"
 unset sds_identity
-export FACTORY_PR_TOKEN APP_BRAIN_READ_KEY DISPATCH_APP_PRIVATE_KEY_B64
+export FACTORY_PR_TOKEN SDS_OBSERVER_TOKEN APP_BRAIN_READ_KEY DISPATCH_APP_PRIVATE_KEY_B64
 # Log WHICH credentials were present, never their values: an `unknown` in the
 # digest is otherwise indistinguishable from a broken check, and this line is
 # the difference between "nobody set the variable" and "the probe failed".
 creds="pat=$([ -n "$FACTORY_PR_TOKEN" ] && echo bws || echo "no($pat_reason)")"
+creds="$creds members=$([ -n "$SDS_OBSERVER_TOKEN" ] && echo bws || echo "no($observer_reason)")"
 creds="$creds brain=$([ -n "${APP_BRAIN_READ_KEY:-}" ] && echo yes || echo no)"
 creds="$creds app=$([ -n "${DISPATCH_APP_PRIVATE_KEY_B64:-}" ] && echo yes || echo no)"
 # ---------------------------------------------------------------------------

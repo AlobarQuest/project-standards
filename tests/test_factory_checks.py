@@ -23,7 +23,6 @@ from portfolio.factory_checks import (
     check_pat_access,
     check_pat_scope,
     check_secrets,
-    in_q2_scope,
     memoizing_gh,
     memoizing_gh_read,
     run_factory_checks,
@@ -50,13 +49,15 @@ def _workflow():
     return (Path(__file__).parent / "fixtures" / "factory-runner-workflow.yml").read_text()
 
 
-def _scoped(make_repo, name="x", profile="dependency-update", extra=""):
-    front = FRONT.format(name=name, extra=f"delivery_profile: {profile}\n{extra}")
-    return make_repo(name, files={"PROJECT.md": front})
-
-
-def _unscoped(make_repo, name="y"):
-    return make_repo(name, files={"PROJECT.md": FRONT.format(name=name, extra="")})
+def _repo(make_repo, name="x", origin=False):
+    repo = make_repo(name, files={"PROJECT.md": FRONT.format(name=name, extra="")})
+    if origin:
+        subprocess.run(
+            ["git", "remote", "add", "origin", f"https://github.com/AlobarQuest/{name}.git"],
+            cwd=repo,
+            check=True,
+        )
+    return repo
 
 
 def _gh_read(payload=None, diagnostic=""):
@@ -103,43 +104,6 @@ def credentials(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# scope
-# --------------------------------------------------------------------------
-
-
-def test_declaring_a_delivery_profile_puts_a_repo_in_scope(make_repo):
-    assert in_q2_scope(_scoped(make_repo)) is True
-
-
-def test_no_delivery_profile_is_out_of_scope(make_repo):
-    assert in_q2_scope(_unscoped(make_repo)) is False
-
-
-def test_a_non_string_delivery_profile_is_out_of_scope(make_repo):
-    """The proxy must be a name, not merely a present key: `delivery_profile:`
-    with nothing after it parses as None and would otherwise pull a repository
-    into a sweep it never declared for."""
-    repo = make_repo("z", files={"PROJECT.md": FRONT.format(name="z", extra="delivery_profile:\n")})
-    assert in_q2_scope(repo) is False
-
-
-def test_a_repo_with_no_manifest_is_out_of_scope(make_repo):
-    assert in_q2_scope(make_repo("nomanifest")) is False
-
-
-def test_out_of_scope_repos_get_not_applicable_on_every_capability_check(
-    make_repo, credentials, monkeypatch
-):
-    monkeypatch.setattr(
-        "portfolio.factory_checks._token_gh_read",
-        lambda _token: pytest.fail("out-of-scope repo must not reach the network"),
-    )
-    results = run_factory_checks(_unscoped(make_repo), "AlobarQuest/y", gh=_fake_gh())
-    assert [c["id"] for c in results] == list(FACTORY_CHECKS)
-    assert {c["status"] for c in results} == {"not-applicable"}
-
-
-# --------------------------------------------------------------------------
 # factory.pat_access
 # --------------------------------------------------------------------------
 
@@ -147,7 +111,7 @@ def test_out_of_scope_repos_get_not_applicable_on_every_capability_check(
 def test_pat_access_without_the_credential_is_unknown_never_pass_or_violation(
     make_repo, no_credentials
 ):
-    result = check_pat_access(_scoped(make_repo), "AlobarQuest/x")
+    result = check_pat_access("AlobarQuest/x")
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.pat_access.credential-absent"
     assert config.FACTORY_PAT_ENV in result["details"][0]["message"]
@@ -157,7 +121,7 @@ def test_pat_access_404_is_a_violation_naming_the_access_list(make_repo, credent
     """A fine-grained PAT reports a repository outside its access list as 404,
     not 403 -- measured 2026-08-17 against AlobarQuest/RentVSBuyGA."""
     gh_read = _gh_read(None, "gh: Not Found (HTTP 404)")
-    result = check_pat_access(_scoped(make_repo), "AlobarQuest/x", gh_read=gh_read)
+    result = check_pat_access("AlobarQuest/x", gh_read=gh_read)
     assert result["status"] == "violation"
     assert result["details"][0]["id"] == "factory.pat-no-access"
     assert "access list" in result["fix"]
@@ -165,15 +129,13 @@ def test_pat_access_404_is_a_violation_naming_the_access_list(make_repo, credent
 
 def test_pat_access_bad_credentials_is_unknown_not_a_repo_defect(make_repo, credentials):
     gh_read = _gh_read(None, '{"message":"Bad credentials"} gh: (HTTP 401)')
-    result = check_pat_access(_scoped(make_repo), "AlobarQuest/x", gh_read=gh_read)
+    result = check_pat_access("AlobarQuest/x", gh_read=gh_read)
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.pat-rejected"
 
 
 def test_pat_access_with_write_access_passes(make_repo, credentials):
-    result = check_pat_access(
-        _scoped(make_repo), "AlobarQuest/x", gh_read=_gh_read(_repo_body(True))
-    )
+    result = check_pat_access("AlobarQuest/x", gh_read=_gh_read(_repo_body(True)))
     assert result["status"] == "pass"
 
 
@@ -187,22 +149,19 @@ def test_a_bare_200_on_a_public_repo_is_not_access(make_repo, credentials):
     are public, so a status-only probe would certify them on a token that cannot
     push.
     """
-    result = check_pat_access(
-        _scoped(make_repo), "AlobarQuest/x", gh_read=_gh_read(_repo_body(False))
-    )
+    result = check_pat_access("AlobarQuest/x", gh_read=_gh_read(_repo_body(False)))
     assert result["status"] == "violation"
     assert result["details"][0]["id"] == "factory.pat-read-only"
 
 
 def test_pat_access_unparseable_body_is_unknown(make_repo, credentials):
-    result = check_pat_access(_scoped(make_repo), "AlobarQuest/x", gh_read=_gh_read("not json"))
+    result = check_pat_access("AlobarQuest/x", gh_read=_gh_read("not json"))
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.pat-permissions-unreadable"
 
 
 def test_pat_access_never_echoes_the_token(make_repo, credentials):
     result = check_pat_access(
-        _scoped(make_repo),
         "AlobarQuest/x",
         token="s3cret-token",
         gh_read=_gh_read(_repo_body(True)),
@@ -225,18 +184,17 @@ def test_pat_scope_is_unknown_with_and_without_the_credential_but_for_different_
     header and no API exposes its permission set. Collapsing the two would hide
     which of the operator and GitHub is the reason.
     """
-    repo = _scoped(make_repo)
     monkeypatch.delenv(config.FACTORY_PAT_ENV, raising=False)
-    absent = check_pat_scope(repo)
+    absent = check_pat_scope()
     monkeypatch.setenv(config.FACTORY_PAT_ENV, "test-pat-value")
-    present = check_pat_scope(repo)
+    present = check_pat_scope()
     assert absent["status"] == present["status"] == "unknown"
     assert absent["details"][0]["id"] == "factory.pat_scope.credential-absent"
     assert present["details"][0]["id"] == "factory.pat-scope-unobservable"
 
 
 def test_pat_scope_never_claims_to_have_measured_anything(make_repo, credentials):
-    result = check_pat_scope(_scoped(make_repo))
+    result = check_pat_scope()
     assert result["status"] != "pass"
     assert "workflows" in result["fix"]
 
@@ -247,14 +205,14 @@ def test_pat_scope_never_claims_to_have_measured_anything(make_repo, credentials
 
 
 def test_secrets_present_passes_and_says_presence_is_not_sufficiency(make_repo):
-    result = check_secrets(_scoped(make_repo), "AlobarQuest/x", gh=_fake_gh())
+    result = check_secrets("AlobarQuest/x", gh=_fake_gh())
     assert result["status"] == "pass"
     assert "presence is not sufficiency" in result["details"][0]["message"]
 
 
 def test_missing_secret_fires_naming_it(make_repo):
     gh = _fake_gh(secret_names=SECRETS[:-1])
-    result = check_secrets(_scoped(make_repo), "AlobarQuest/x", gh=gh)
+    result = check_secrets("AlobarQuest/x", gh=gh)
     assert result["status"] == "violation"
     assert "FACTORY_PR_TOKEN" in result["details"][0]["message"]
 
@@ -265,21 +223,21 @@ def test_secrets_required_set_comes_from_the_workflow_not_a_literal(make_repo):
     check must miss it."""
     workflow = _workflow().replace("ANTHROPIC_API_KEY:", "SOME_NEW_SECRET:")
     gh = _fake_gh(workflow=workflow)
-    result = check_secrets(_scoped(make_repo), "AlobarQuest/x", gh=gh)
+    result = check_secrets("AlobarQuest/x", gh=gh)
     assert result["status"] == "violation"
     assert "SOME_NEW_SECRET" in result["details"][0]["message"]
 
 
 def test_secrets_unreadable_pin_is_unknown(make_repo):
     gh = _fake_gh(fail_on=("RECOMMENDED_CALLER_PIN",))
-    result = check_secrets(_scoped(make_repo), "AlobarQuest/x", gh=gh)
+    result = check_secrets("AlobarQuest/x", gh=gh)
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.secrets-pin-unreachable"
 
 
 def test_secrets_unlistable_is_unknown_not_missing(make_repo):
     gh = _fake_gh(fail_on=("secret list",))
-    result = check_secrets(_scoped(make_repo), "AlobarQuest/x", gh=gh)
+    result = check_secrets("AlobarQuest/x", gh=gh)
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.secrets-list-failed"
 
@@ -290,7 +248,7 @@ def test_secrets_unlistable_is_unknown_not_missing(make_repo):
 
 
 def test_landing_without_the_key_is_unknown(make_repo, no_credentials):
-    result = check_landing_known(_scoped(make_repo), "AlobarQuest/x")
+    result = check_landing_known("AlobarQuest/x")
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.landing_known.credential-absent"
 
@@ -298,7 +256,7 @@ def test_landing_without_the_key_is_unknown(make_repo, no_credentials):
 @pytest.mark.parametrize("landing", ["redeploys", "inert"])
 def test_a_determined_landing_passes(make_repo, credentials, landing):
     result = check_landing_known(
-        _scoped(make_repo), "AlobarQuest/x", fetch=lambda _s: {"landing": landing, "reason": None}
+        "AlobarQuest/x", fetch=lambda _s: {"landing": landing, "reason": None}
     )
     assert result["status"] == "pass"
     assert landing in result["details"][0]["message"]
@@ -309,7 +267,6 @@ def test_app_brain_answering_unknown_is_a_violation_not_an_unknown(make_repo, cr
     `security-standards` was in exactly this state as a live factory target on
     2026-08-09. It must not read as "this process could not ask"."""
     result = check_landing_known(
-        _scoped(make_repo),
         "AlobarQuest/x",
         fetch=lambda _s: {"landing": "unknown", "reason": "no_app_record"},
     )
@@ -319,15 +276,13 @@ def test_app_brain_answering_unknown_is_a_violation_not_an_unknown(make_repo, cr
 
 
 def test_an_unreachable_app_brain_is_unknown_not_a_violation(make_repo, credentials):
-    result = check_landing_known(_scoped(make_repo), "AlobarQuest/x", fetch=lambda _s: None)
+    result = check_landing_known("AlobarQuest/x", fetch=lambda _s: None)
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.landing-source-unreadable"
 
 
 def test_an_unrecognised_landing_value_is_unknown_never_the_nearest_match(make_repo, credentials):
-    result = check_landing_known(
-        _scoped(make_repo), "AlobarQuest/x", fetch=lambda _s: {"landing": "rebuilds"}
-    )
+    result = check_landing_known("AlobarQuest/x", fetch=lambda _s: {"landing": "rebuilds"})
     assert result["status"] == "unknown"
 
 
@@ -424,14 +379,14 @@ def test_the_required_app_permissions_are_the_ones_the_call_sites_need():
 
 
 def test_an_installation_that_reaches_everything_passes(make_repo):
-    result = check_app_access(_scoped(make_repo), "AlobarQuest/x", reach=_reach())
+    result = check_app_access("AlobarQuest/x", reach=_reach())
     assert result["status"] == "pass"
     assert result["details"][0]["id"] == "factory.app-can-reach"
 
 
 def test_green_says_what_it_cannot_establish(make_repo):
     """A pass here is narrower than it reads, and must say so in its own text."""
-    result = check_app_access(_scoped(make_repo), "AlobarQuest/x", reach=_reach())
+    result = check_app_access("AlobarQuest/x", reach=_reach())
     message = result["details"][0]["message"]
     assert "administration" in message
     assert "attempting it" in message
@@ -444,7 +399,7 @@ def test_an_absent_credential_is_unknown_and_never_violation(make_repo):
     repository defective. `_no_dispatch_app_key` (conftest) guarantees the
     variable is absent, so this exercises the real default reader.
     """
-    result = check_app_access(_scoped(make_repo), "AlobarQuest/x")
+    result = check_app_access("AlobarQuest/x")
     assert result["status"] == "unknown"
     assert result["status"] != "violation"
     assert result["details"][0]["id"] == "factory.app-credential-absent"
@@ -453,7 +408,7 @@ def test_an_absent_credential_is_unknown_and_never_violation(make_repo):
 
 def test_an_unreadable_installation_is_unknown_and_carries_its_reason(make_repo):
     unreadable = AppUnreadable("factory.app-installation-unreadable", "HTTP 401", "check the key")
-    result = check_app_access(_scoped(make_repo), "AlobarQuest/x", reach=lambda: unreadable)
+    result = check_app_access("AlobarQuest/x", reach=lambda: unreadable)
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.app-installation-unreadable"
     assert result["fix"] == "check the key"
@@ -462,7 +417,7 @@ def test_an_unreadable_installation_is_unknown_and_carries_its_reason(make_repo)
 def test_a_suspended_installation_is_a_violation(make_repo):
     """Correct permissions, full reach, and it can mint nothing — so it is a real
     defect that the other terms cannot see."""
-    result = check_app_access(_scoped(make_repo), "AlobarQuest/x", reach=_reach(suspended=True))
+    result = check_app_access("AlobarQuest/x", reach=_reach(suspended=True))
     assert result["status"] == "violation"
     assert result["details"][0]["id"] == "factory.app-suspended"
 
@@ -470,7 +425,6 @@ def test_a_suspended_installation_is_a_violation(make_repo):
 def test_a_selected_installation_that_omits_this_repository_is_a_violation(make_repo):
     """The narrowing this check exists to notice."""
     result = check_app_access(
-        _scoped(make_repo),
         "AlobarQuest/x",
         reach=_reach(repository_selection="selected", repositories=frozenset({"alobarquest/y"})),
     )
@@ -481,7 +435,6 @@ def test_a_selected_installation_that_omits_this_repository_is_a_violation(make_
 
 def test_a_selected_installation_that_includes_this_repository_passes(make_repo):
     result = check_app_access(
-        _scoped(make_repo),
         "AlobarQuest/X",
         reach=_reach(repository_selection="selected", repositories=frozenset({"alobarquest/x"})),
     )
@@ -498,16 +451,13 @@ def test_an_all_installation_is_not_read_as_reaching_nothing(make_repo):
     empty `repositories` under `selected` is a violation, and under `all` is a
     pass.
     """
-    scoped = _scoped(make_repo)
-    assert check_app_access(scoped, "AlobarQuest/x", reach=_reach())["status"] == "pass"
+    assert check_app_access("AlobarQuest/x", reach=_reach())["status"] == "pass"
     narrowed = _reach(repository_selection="selected", repositories=frozenset())
-    assert check_app_access(scoped, "AlobarQuest/x", reach=narrowed)["status"] == "violation"
+    assert check_app_access("AlobarQuest/x", reach=narrowed)["status"] == "violation"
 
 
 def test_an_unrecognised_repository_selection_is_unknown(make_repo):
-    result = check_app_access(
-        _scoped(make_repo), "AlobarQuest/x", reach=_reach(repository_selection="some-new-word")
-    )
+    result = check_app_access("AlobarQuest/x", reach=_reach(repository_selection="some-new-word"))
     assert result["status"] == "unknown"
     assert result["details"][0]["id"] == "factory.app-selection-unrecognised"
 
@@ -520,9 +470,7 @@ def test_losing_any_required_permission_is_a_violation_that_names_it(make_repo, 
     only one member, so each is removed on its own.
     """
     narrowed = {k: v for k, v in GRANTED.items() if k != permission}
-    result = check_app_access(
-        _scoped(make_repo), "AlobarQuest/x", reach=_reach(permissions=narrowed)
-    )
+    result = check_app_access("AlobarQuest/x", reach=_reach(permissions=narrowed))
     assert result["status"] == "violation"
     assert result["details"][0]["id"] == "factory.app-permission-below-need"
     assert permission in result["details"][0]["message"]
@@ -532,7 +480,6 @@ def test_a_permission_downgraded_to_read_is_a_violation(make_repo):
     """Present is not sufficient: `contents: read` cannot write the squash commit,
     which is the 403 measured on 2026-08-09."""
     result = check_app_access(
-        _scoped(make_repo),
         "AlobarQuest/x",
         reach=_reach(permissions={**GRANTED, "contents": "read"}),
     )
@@ -544,7 +491,6 @@ def test_more_than_is_needed_is_not_a_defect(make_repo):
     """Compared by RANK, never by string equality: `admin` satisfies `write`, and
     an equality test would report a repository defective for holding more."""
     result = check_app_access(
-        _scoped(make_repo),
         "AlobarQuest/x",
         reach=_reach(permissions={**GRANTED, "contents": "admin"}),
     )
@@ -555,7 +501,6 @@ def test_a_permission_level_this_build_cannot_rank_is_unknown_not_violation(make
     """The fail-open's mirror image. Ranking an unrecognised word 0 would report a
     repository defective because GitHub invented a level."""
     result = check_app_access(
-        _scoped(make_repo),
         "AlobarQuest/x",
         reach=_reach(permissions={**GRANTED, "contents": "superwrite"}),
     )
@@ -572,7 +517,7 @@ def test_reach_and_permissions_are_reported_together(make_repo):
         repositories=frozenset({"alobarquest/other"}),
         permissions={**GRANTED, "contents": "read"},
     )
-    result = check_app_access(_scoped(make_repo), "AlobarQuest/x", reach=both)
+    result = check_app_access("AlobarQuest/x", reach=both)
     assert result["status"] == "violation"
     assert {d["id"] for d in result["details"]} == {
         "factory.app-repo-not-granted",
@@ -589,7 +534,7 @@ def test_a_measured_violation_outranks_an_unmeasurable_term(make_repo):
         repositories=frozenset({"alobarquest/other"}),
         permissions={**GRANTED, "contents": "superwrite"},
     )
-    result = check_app_access(_scoped(make_repo), "AlobarQuest/x", reach=mixed)
+    result = check_app_access("AlobarQuest/x", reach=mixed)
     assert result["status"] == "violation"
     ids = [d["id"] for d in result["details"]]
     assert "factory.app-repo-not-granted" in ids
@@ -600,7 +545,6 @@ def test_a_suspended_installation_says_only_that(make_repo):
     """Total, so nothing else is worth reporting beside it: a suspended installation
     mints no token whatever it is granted and wherever."""
     result = check_app_access(
-        _scoped(make_repo),
         "AlobarQuest/x",
         reach=_reach(suspended=True, permissions={"metadata": "read"}),
     )
@@ -612,7 +556,6 @@ def test_a_permission_value_of_an_unreadable_SHAPE_is_unknown_not_violation(make
     nothing there, rank it `none`, and emit a violation reading "granted nothing" — a
     verdict about the repository arising from a value this build could not read."""
     result = check_app_access(
-        _scoped(make_repo),
         "AlobarQuest/x",
         reach=_reach(permissions={**GRANTED, "contents": {"level": "write"}}),
     )
@@ -625,7 +568,6 @@ def test_a_subject_that_is_not_a_slug_is_unknown_not_a_violation(make_repo):
     name. Matching that against an installation's grant would report the INSTALLATION
     defective for a missing remote — a violation about the wrong subject entirely."""
     result = check_app_access(
-        _scoped(make_repo),
         "bare-directory-name",
         reach=_reach(repository_selection="selected", repositories=frozenset({"o/r"})),
     )
@@ -633,21 +575,12 @@ def test_a_subject_that_is_not_a_slug_is_unknown_not_a_violation(make_repo):
     assert result["details"][0]["id"] == "factory.app-subject-not-a-slug"
 
 
-def test_an_out_of_scope_repo_never_reads_the_installation(make_repo):
-    def explode():
-        pytest.fail("an out-of-scope repo must not read the App installation")
-
-    result = check_app_access(_unscoped(make_repo), "AlobarQuest/y", reach=explode)
-    assert result["status"] == "not-applicable"
-
-
-def test_run_factory_checks_threads_one_reach_through(make_repo):
+def test_run_factory_checks_threads_one_reach_through():
     calls = []
     reach = lambda: calls.append(1) or AppReach(dict(GRANTED), "all", False, None)  # noqa: E731
-    results = run_factory_checks(_unscoped(make_repo), "AlobarQuest/y", gh=_fake_gh(), reach=reach)
+    results = run_factory_checks("AlobarQuest/y", gh=_fake_gh(), reach=reach)
     assert [c["id"] for c in results] == list(FACTORY_CHECKS)
-    # out of scope, so the reader is threaded but never called
-    assert calls == []
+    assert calls == [1]
 
 
 def test_no_reported_id_is_a_substring_of_another():
@@ -686,17 +619,23 @@ def test_no_reported_id_is_a_substring_of_another():
 # --------------------------------------------------------------------------
 
 
-def test_sweep_skips_out_of_scope_repos_entirely(make_repo, credentials):
-    scoped, unscoped = _scoped(make_repo, "a"), _unscoped(make_repo, "b")
-    result = sweep([scoped, unscoped], gh=_fake_gh())
-    assert str(unscoped) not in result
+def test_sweep_measures_only_the_granted_members(make_repo, credentials):
+    granted, other = _repo(make_repo, "a", origin=True), _repo(make_repo, "b", origin=True)
+    result = sweep([granted, other], frozenset({"alobarquest/a"}), gh=_fake_gh())
+    assert str(granted) in result
+    assert str(other) not in result
 
 
-def test_sweep_reports_unknown_when_the_slug_cannot_be_derived(make_repo, credentials):
-    repo = _scoped(make_repo, "a")  # git repo with no origin remote
-    results = sweep([repo], gh=_fake_gh())[str(repo)]
-    assert [c["id"] for c in results] == ["runner.caller", *FACTORY_CHECKS]
-    assert {c["status"] for c in results} == {"unknown"}
+def test_sweep_matches_the_granted_slug_whatever_its_case(make_repo, credentials):
+    """The record names `AlobarQuest/a`; GitHub slugs are case-insensitive."""
+    repo = _repo(make_repo, "a", origin=True)
+    assert str(repo) in sweep([repo], frozenset({"alobarquest/a"}), gh=_fake_gh())
+
+
+def test_sweep_never_measures_a_working_copy_with_no_origin(make_repo, credentials):
+    """Without an origin the working copy names no repository, so no grant can be its."""
+    repo = _repo(make_repo, "a")
+    assert sweep([repo], frozenset({"alobarquest/a"}), gh=_fake_gh()) == {}
 
 
 def test_a_sweep_reads_the_app_installation_once_for_every_repository(
@@ -710,20 +649,14 @@ def test_a_sweep_reads_the_app_installation_once_for_every_repository(
     and one that mints three credentials.
 
     The repositories are given an origin remote deliberately: without one,
-    `sweep` takes its no-slug branch and never reaches a check at all, and the
-    assertion would hold at zero while measuring nothing. The sibling checks are
+    `sweep` cannot match them to a grant and never reaches a check at all, and
+    the assertion would hold at zero while measuring nothing. The sibling checks are
     stubbed so this stays about the one property and touches no network.
     """
     calls = []
     repos = []
     for name in ("a", "b", "c"):
-        repo = _scoped(make_repo, name)
-        subprocess.run(
-            ["git", "remote", "add", "origin", f"https://github.com/AlobarQuest/{name}.git"],
-            cwd=repo,
-            check=True,
-        )
-        repos.append(repo)
+        repos.append(_repo(make_repo, name, origin=True))
     for stub in ("check_pat_access", "check_secrets", "check_landing_known"):
         monkeypatch.setattr(
             f"portfolio.factory_checks.{stub}",
@@ -736,6 +669,7 @@ def test_a_sweep_reads_the_app_installation_once_for_every_repository(
 
     result = sweep(
         repos,
+        frozenset({"alobarquest/a", "alobarquest/b", "alobarquest/c"}),
         gh=_fake_gh(),
         reach=lambda: calls.append(1) or AppReach(dict(GRANTED), "all", False, None),
     )
@@ -812,12 +746,7 @@ def test_a_sweep_reaches_the_remote_through_the_reader_it_was_given(make_repo, m
     this the default reader stays the real one: a caller injecting only a fake
     `gh` would still spawn `gh` at the network, which is both a test that
     touches the estate and a sweep whose reads nobody can redirect."""
-    repo = _scoped(make_repo, "a")
-    subprocess.run(
-        ["git", "remote", "add", "origin", "https://github.com/AlobarQuest/a.git"],
-        cwd=repo,
-        check=True,
-    )
+    repo = _repo(make_repo, "a", origin=True)
     for stub in ("check_pat_access", "check_pat_scope", "check_secrets", "check_landing_known"):
         monkeypatch.setattr(
             f"portfolio.factory_checks.{stub}",
@@ -831,6 +760,7 @@ def test_a_sweep_reaches_the_remote_through_the_reader_it_was_given(make_repo, m
 
     results = sweep(
         [repo],
+        frozenset({"alobarquest/a"}),
         gh=_fake_gh(),
         reach=lambda: AppReach(dict(GRANTED), "all", False, None),
         gh_read=gh_read,
@@ -839,41 +769,3 @@ def test_a_sweep_reaches_the_remote_through_the_reader_it_was_given(make_repo, m
     caller = next(c for c in results[str(repo)] if c["id"] == "runner.caller")
     assert seen == ["repos/AlobarQuest/a/contents/factory-target.toml"]
     assert caller["status"] == "unknown"  # never a defect pinned on the repository
-
-
-# --------------------------------------------------------------------------
-# measure_unscoped: an explicitly named repository is measured without a profile
-# --------------------------------------------------------------------------
-
-
-def test_unscoped_repo_is_measured_when_asked(make_repo, credentials):
-    result = check_landing_known(
-        _unscoped(make_repo),
-        "AlobarQuest/y",
-        fetch=lambda _s: {"landing": "inert", "reason": None},
-        measure_unscoped=True,
-    )
-    assert result["status"] == "pass"
-
-
-def test_without_the_flag_an_unscoped_repo_still_reads_out_of_scope(make_repo, credentials):
-    result = check_landing_known(
-        _unscoped(make_repo),
-        "AlobarQuest/y",
-        fetch=lambda _s: pytest.fail("out-of-scope repo must not reach the network"),
-    )
-    assert result["details"][0]["id"] == "factory.landing_known.out-of-scope"
-
-
-def test_run_factory_checks_threads_the_flag_to_every_check(make_repo, credentials, monkeypatch):
-    monkeypatch.setattr(
-        "portfolio.factory_checks._token_gh_read", lambda _t: _gh_read(_repo_body(True))
-    )
-    out = run_factory_checks(
-        _unscoped(make_repo),
-        "AlobarQuest/y",
-        gh=_fake_gh(),
-        reach=lambda: AppUnreadable("x.unreadable", "HTTP 401", "check the key"),
-        measure_unscoped=True,
-    )
-    assert all(not c["details"] or not c["details"][0]["id"].endswith("out-of-scope") for c in out)

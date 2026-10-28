@@ -33,10 +33,14 @@ def _check(check_id, status, message="m", fix="do the thing"):
 def _sweep(results):
     """A sweep stub keyed by repo NAME, resolved to whatever paths scan passes."""
 
-    def sweep(repos):
+    def sweep(repos, _granted):
         return {str(r): results[r.name] for r in repos if r.name in results}
 
     return sweep
+
+
+def _granted():
+    return frozenset({"alobarquest/declared"})
 
 
 def test_scan_attaches_factory_results_and_names_them_in_the_digest(make_repo, portfolio_env):
@@ -56,6 +60,7 @@ def test_scan_attaches_factory_results_and_names_them_in_the_digest(make_repo, p
                 ]
             }
         ),
+        read_scope=_granted,
     )
     assert summary["factory_findings"] == 1
     data = json.loads(config.json_path().read_text())
@@ -79,6 +84,7 @@ def test_one_finding_shared_by_many_repos_is_rendered_once(make_repo, portfolio_
     scan(
         roots=[repo.parent],
         factory_sweep=_sweep({n: [dict(shared)] for n in ("a", "b", "c")}),
+        read_scope=_granted,
     )
     digest = config.digest_path().read_text()
     assert digest.count("not establishable read-only") == 1
@@ -87,7 +93,11 @@ def test_one_finding_shared_by_many_repos_is_rendered_once(make_repo, portfolio_
 
 def test_a_passing_capability_check_contributes_no_finding_line(make_repo, portfolio_env):
     repo = make_repo("declared", files={"PROJECT.md": FRONT.format(name="declared", extra="")})
-    scan(roots=[repo.parent], factory_sweep=_sweep({"declared": [_check("runner.caller", PASS)]}))
+    scan(
+        roots=[repo.parent],
+        factory_sweep=_sweep({"declared": [_check("runner.caller", PASS)]}),
+        read_scope=_granted,
+    )
     digest = config.digest_path().read_text()
     assert "## Factory capability (Q2)" in digest
     assert "### What failed" not in digest.split("## Factory capability (Q2)")[1]
@@ -101,6 +111,7 @@ def test_not_applicable_is_an_answer_and_never_a_finding(make_repo, portfolio_en
     summary = scan(
         roots=[repo.parent],
         factory_sweep=_sweep({"declared": [_check("runner.caller", NA), _check("x", PASS)]}),
+        read_scope=_granted,
     )
     assert summary["factory_findings"] == 0
 
@@ -113,13 +124,14 @@ def test_unknown_is_counted_as_a_finding(make_repo, portfolio_env):
     summary = scan(
         roots=[repo.parent],
         factory_sweep=_sweep({"declared": [_check("factory.pat_access", UNKNOWN)]}),
+        read_scope=_granted,
     )
     assert summary["factory_findings"] == 1
 
 
 def test_repos_outside_q2_scope_do_not_appear_in_the_factory_section(make_repo, portfolio_env):
     repo = make_repo("plain", files={"PROJECT.md": FRONT.format(name="plain", extra="")})
-    scan(roots=[repo.parent], factory_sweep=_sweep({}))
+    scan(roots=[repo.parent], factory_sweep=_sweep({}), read_scope=_granted)
     digest = config.digest_path().read_text()
     assert "## Factory capability (Q2)" not in digest
 
@@ -141,7 +153,7 @@ def test_compliance_failures_are_named_not_just_symbolised(
             )
         },
     )
-    scan(roots=[repo.parent], factory_sweep=_sweep({}))
+    scan(roots=[repo.parent], factory_sweep=_sweep({}), read_scope=_granted)
     digest = config.digest_path().read_text()
     assert "### What failed" in digest
     assert "drifted / project / project.version-drift: pinned 0.9, current 1.0" in digest
@@ -152,6 +164,6 @@ def test_an_unknown_compliance_cell_names_its_note(make_repo, portfolio_env):
     details would leave the commonest non-pass cell in the estate as a bare
     `?`."""
     repo = make_repo("bare")  # no PROJECT.md at all
-    scan(roots=[repo.parent], factory_sweep=_sweep({}))
+    scan(roots=[repo.parent], factory_sweep=_sweep({}), read_scope=_granted)
     digest = config.digest_path().read_text()
     assert "bare / project — no manifest" in digest

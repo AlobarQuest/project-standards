@@ -61,7 +61,6 @@ def _run_checks(
     gh,
     registered: list[str] | None,
     gh_read=onboard_checks._gh_read,
-    measure_unscoped: bool = False,
 ) -> list[dict]:
     slug = onboard_checks.repo_slug(repo) or repo.name
     return [
@@ -76,7 +75,7 @@ def _run_checks(
         onboard_checks.check_protection(slug, gh_read=gh_read),
         onboard_checks.check_backlog_hygiene(repo),
         onboard_checks.check_standards_pinned(repo),
-        *factory_checks.run_factory_checks(repo, slug, gh=gh, measure_unscoped=measure_unscoped),
+        *factory_checks.run_factory_checks(slug, gh=gh),
     ]
 
 

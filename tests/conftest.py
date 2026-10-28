@@ -83,3 +83,17 @@ def _no_dispatch_app_key(monkeypatch):
     from portfolio import config
 
     monkeypatch.delenv(config.DISPATCH_APP_KEY_ENV, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_sds_observer_token(monkeypatch):
+    """No test may read the live SDS member record with the operator's bearer.
+
+    `scan` reads the member record when nothing is injected, so an exported
+    observer token would put the orchestrator on the path of every scan test.
+    Scrubbed globally for the same reason as the App key; a test that needs a
+    scope injects `read_scope`.
+    """
+    from portfolio import config
+
+    monkeypatch.delenv(config.SDS_OBSERVER_TOKEN_ENV, raising=False)

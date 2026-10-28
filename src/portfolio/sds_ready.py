@@ -47,7 +47,6 @@ def run_all_checks(repo: Path, gh, gh_read, fetch=None) -> list[dict]:
             gh,
             onboard_checks.registered_profiles(),
             gh_read,
-            measure_unscoped=True,
         ),
         check_decisions(repo_key(slug)),
         check_declaration(slug, gh_read=gh_read),

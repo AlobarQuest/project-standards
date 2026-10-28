@@ -119,6 +119,22 @@ FACTORY_PAT_ENV = "FACTORY_PR_TOKEN"
 APP_BRAIN_KEY_ENV = "APP_BRAIN_READ_KEY"
 
 
+# The SDS member record decides which repositories the nightly sweep measures
+# (`member_scope`). The bearer is the orchestrator's shared observe-and-report
+# credential, which the launcher fetches from BWS; like every credential here, the
+# kit reads it from the environment and never fetches it.
+SDS_OBSERVER_TOKEN_ENV = "SDS_OBSERVER_TOKEN"
+SDS_OBSERVER_KEY_ID = "orchestrator-observer"
+
+
+def sds_observer_token() -> str | None:
+    return os.environ.get(SDS_OBSERVER_TOKEN_ENV) or None
+
+
+def sds_url() -> str:
+    return os.environ.get("SDS_URL") or "https://sds.alobar.net"
+
+
 def factory_pat() -> str | None:
     return os.environ.get(FACTORY_PAT_ENV) or None
 

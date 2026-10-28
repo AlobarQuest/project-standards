@@ -3,7 +3,8 @@ from portfolio.cli import main
 from portfolio.matrix import PASS, CheckResult
 
 
-def test_cli_scan_runs_and_writes(make_repo, portfolio_env, capsys):
+def test_cli_scan_runs_and_writes(make_repo, portfolio_env, capsys, monkeypatch):
+    monkeypatch.setattr("portfolio.member_scope.read_granted", lambda: frozenset({"o/x"}))
     body = (
         "---\nname: x\ntier: active\nstatus: active\nversion: 1.0.0\nversion_source: package.json\n"
         "purpose: p\nupdated: 2026-06-25\n---\n\n## Backlog\n"

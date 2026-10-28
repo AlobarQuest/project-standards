@@ -81,8 +81,11 @@ def main(argv=None) -> int:  # noqa: C901
         return 0
     if args.cmd == "scan":
         roots = [Path(r) for r in args.roots] if args.roots else None
-        print(json.dumps(scan(roots=roots)))
-        return 0
+        result = scan(roots=roots)
+        print(json.dumps(result))
+        # 3: the scan ran, but without the member record it measured no repository's
+        # factory capability (integrations/portfolio-scan.sh passes it through).
+        return 3 if result["member_record_unreadable"] else 0
     if args.cmd == "foundation":
         roots = [Path(r) for r in args.roots] if args.roots else None
         try:
