@@ -2,14 +2,14 @@ from dataclasses import asdict
 from datetime import date, datetime
 from pathlib import Path
 
-from . import compliance, config, factory_checks
+from . import compliance, config, factory_checks, member_scope
 from .aggregate import build_records, render_digest, to_json
 from .inbox import read_inbox
 from .manifest import read_manifest
 from .matrix import UNKNOWN, VIOLATION
 
 
-def _attach_factory(records, sweep) -> int:
+def _attach_factory(records, sweep, granted: frozenset[str]) -> int:
     """Attach Q2 capability results, returning the count of non-satisfying ones.
 
     `not-applicable` is not counted: an ADR-0015 declaration and an out-of-scope
@@ -17,7 +17,7 @@ def _attach_factory(records, sweep) -> int:
     nobody measured is not a capability anybody demonstrated, and the nightly
     run exists because Q2 lapses without the repository changing.
     """
-    by_path = sweep([Path(record.path) for record in records])
+    by_path = sweep([Path(record.path) for record in records], granted) if granted else {}
     findings = 0
     for record in records:
         record.factory = by_path.get(record.path, [])
@@ -30,12 +30,19 @@ def scan(
     today: date | None = None,
     now: datetime | None = None,
     factory_sweep=factory_checks.sweep,
+    read_scope=None,
 ) -> dict:
     roots = roots or config.DEFAULT_ROOTS
     today = today or date.today()
     now = now or datetime.now()
     records = build_records(roots, today=today)
-    factory_findings = _attach_factory(records, factory_sweep)
+    # Unreadable means no repository is measured, and the result says why: a run
+    # that measured nothing must never read like a run that found nothing.
+    try:
+        granted, member_record_unreadable = (read_scope or member_scope.read_granted)(), None
+    except member_scope.MemberRecordUnreadable as error:
+        granted, member_record_unreadable = frozenset(), str(error)
+    factory_findings = _attach_factory(records, factory_sweep, granted)
 
     pairs = []
     for record in records:
@@ -50,8 +57,10 @@ def scan(
     untriaged_count = sum(1 for i in read_inbox() if i.status == "untriaged")
     home = config.portfolio_home()
     home.mkdir(parents=True, exist_ok=True)
-    config.json_path().write_text(to_json(records, untriaged_count))
-    config.digest_path().write_text(render_digest(records, untriaged_count))
+    config.json_path().write_text(to_json(records, untriaged_count, member_record_unreadable))
+    config.digest_path().write_text(
+        render_digest(records, untriaged_count, member_record_unreadable)
+    )
     fails = sum(1 for r in records for f in r.findings if f["severity"] == "FAIL")
     warns = sum(1 for r in records for f in r.findings if f["severity"] == "WARN")
     compliance_violations = sum(
@@ -63,4 +72,5 @@ def scan(
         "warns": warns,
         "compliance_violations": compliance_violations,
         "factory_findings": factory_findings,
+        "member_record_unreadable": member_record_unreadable,
     }

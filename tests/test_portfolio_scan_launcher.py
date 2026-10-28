@@ -1,9 +1,9 @@
-"""integrations/portfolio-scan.sh: the BWS fetch of FACTORY_PR_TOKEN and its Healthchecks pings.
+"""integrations/portfolio-scan.sh: its BWS fetches and its Healthchecks pings.
 
 The launcher runs for real under bash, with `security`, `bws` and `curl` replaced by fakes on
 PATH and the scan's interpreter replaced through PORTFOLIO_PYTHON. The fake interpreter records
-the FACTORY_PR_TOKEN the scan was handed, which is how these tests see which token reached it
-without the launcher ever printing one.
+the FACTORY_PR_TOKEN and SDS_OBSERVER_TOKEN the scan was handed, which is how these tests see
+which tokens reached it without the launcher ever printing one.
 """
 
 import json
@@ -17,15 +17,18 @@ import pytest
 LAUNCHER = Path(__file__).resolve().parents[1] / "integrations" / "portfolio-scan.sh"
 
 PAT_UUID = "a3240c2e-92d7-4b32-a726-b49b0135565a"
+OBSERVER_UUID = "f793576f-e9aa-4f9d-8089-b4a000b9e2d5"
 HC_KEY_UUID = "51509d5e-64f5-4781-ae82-b4ed00b644e1"
 BROAD = "fake-broad-identity-5e1f"
 NARROW = "fake-narrow-identity-8c2a"
 PAT = "fake-pat-from-bws-7f3a"
 STALE_PAT = "fake-stale-pat-from-file-9b1c"
 HC_KEY = "fake-hc-api-key-2d4e"
+OBSERVER = "fake-observer-bearer-6a0b"
+STALE_OBSERVER = "fake-stale-observer-3c7d"
 PING_URL = "https://hc-ping.test/fake-ping-secret-41d0"
 WRONG = "https://hc-ping.test/near-miss"
-SECRETS = (BROAD, NARROW, PAT, STALE_PAT, HC_KEY, PING_URL)
+SECRETS = (BROAD, NARROW, PAT, STALE_PAT, HC_KEY, OBSERVER, STALE_OBSERVER, PING_URL)
 
 FAKE_SECURITY = f"""#!/bin/bash
 account=""
@@ -49,6 +52,10 @@ case "$3" in
     [ "$BWS_ACCESS_TOKEN" = "{NARROW}" ] || exit 7
     [ -z "${{FAKE_BWS_PAT_FAILS:-}}" ] || {{ echo "[400 Bad Request]" >&2; exit 1; }}
     value="${{FAKE_BWS_PAT_VALUE-{PAT}}}" ;;
+  {OBSERVER_UUID})
+    [ "$BWS_ACCESS_TOKEN" = "{NARROW}" ] || exit 7
+    [ -z "${{FAKE_BWS_OBSERVER_FAILS:-}}" ] || {{ echo "[400 Bad Request]" >&2; exit 1; }}
+    value="{OBSERVER}" ;;
   *) exit 7 ;;
 esac
 printf '{{"id": "%s", "value": "%s"}}\\n' "$3" "$value"
@@ -67,10 +74,13 @@ if [ "$url" = "https://healthcheck.alobar.net/api/v3/checks/" ]; then
 fi
 """
 
+# Like the real scan, exits 3 when it is handed no observer bearer to read the member record with.
 FAKE_PYTHON = """#!/bin/bash
 if [ "$1" = "-c" ]; then exit 0; fi
 printf '%s' "${FACTORY_PR_TOKEN-<unset>}" > "$FAKE_SEEN"
+printf '%s' "${SDS_OBSERVER_TOKEN-<unset>}" > "$FAKE_SEEN.observer"
 echo '{"projects": 0, "fails": 0, "warns": 0}'
+[ -n "${SDS_OBSERVER_TOKEN:-}" ] || exit 3
 exit "${FAKE_SCAN_RC:-0}"
 """
 
@@ -122,6 +132,7 @@ def run(tmp_path):
             "CLICOLOR_FORCE": "1",
             # A stale export in the calling shell must not stand in for BWS either.
             "FACTORY_PR_TOKEN": STALE_PAT,
+            "SDS_OBSERVER_TOKEN": STALE_OBSERVER,
             **extra,
         }
         proc = subprocess.run(
@@ -144,13 +155,14 @@ def test_fetched_token_reaches_the_scan_and_pings_success(run):
     assert proc.returncode == 0, proc.stderr
     assert pings == ["/start", "/"]
     assert seen == PAT
-    assert "pat=bws" in log
+    assert "pat=bws members=bws" in log
     # The executor's proof rests on this order: `/start` lands before the keeper is fetched.
     assert proc.calls == [
         f"BWS:{HC_KEY_UUID}",
         "https://healthcheck.alobar.net/api/v3/checks/",
         f"{PING_URL}/start",
         f"BWS:{PAT_UUID}",
+        f"BWS:{OBSERVER_UUID}",
         PING_URL,
     ]
 
@@ -193,3 +205,23 @@ def test_only_an_exact_check_name_is_pinged(run):
     assert pings == []
     assert seen == PAT
     assert "no check named 'portfolio-scan'" in proc.stderr
+
+
+def _observer_seen(tmp_path):
+    return (tmp_path / "seen.observer").read_text()
+
+
+def test_the_observer_bearer_reaches_the_scan(run, tmp_path):
+    proc, _, _, _ = run()
+    assert proc.returncode == 0, proc.stderr
+    assert _observer_seen(tmp_path) == OBSERVER
+
+
+def test_an_observer_fetch_failure_fails_the_run(run, tmp_path):
+    """Without the bearer the scan measures nothing; the run must not ping success."""
+    proc, pings, seen, log = run(FAKE_BWS_OBSERVER_FAILS="1")
+    assert proc.returncode == 3
+    assert pings == ["/start", "/fail"]
+    assert seen == PAT
+    assert _observer_seen(tmp_path) == ""  # neither the stale export nor anything else
+    assert "members=no(bws fetch failed or returned empty)" in log

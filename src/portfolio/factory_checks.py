@@ -38,8 +38,9 @@ one, so the fail-open of reporting `pass` without the credential is the one
 outcome this module must never produce.
 
 `runner.caller` is a Q2 check too and lives in `onboard_checks` because it was
-already built there; this module owns the five above plus the scope predicate
-they share. The App credential itself is handled in `dispatch_app`, which is the
+already built there; this module owns the five above and the nightly sweep,
+which measures the repositories the SDS member record grants app changes
+(`member_scope`). The App credential itself is handled in `dispatch_app`, which is the
 one place the private key is touched.
 """
 
@@ -58,8 +59,7 @@ from .dispatch_app import (
     AppUnreadable,
     memoizing_reach,
 )
-from .manifest import read_manifest
-from .matrix import NA, PASS, UNKNOWN, VIOLATION
+from .matrix import PASS, UNKNOWN, VIOLATION
 from .onboard_checks import (
     _gh,
     _gh_read,
@@ -132,50 +132,10 @@ LANDING_UNKNOWN = "unknown"
 _LANDING_ROUTE = "/api/apps/default-branch-landing"
 _USER_AGENT = "project-standards-conformance-kit/1 (+AlobarQuest/project-standards)"
 
-_NOT_IN_SCOPE = (
-    "not measured: this repository declares no delivery_profile, so it is outside "
-    "the Q2 sweep's scope"
-)
 _GREEN_MEANS = (
     "green here means the repository does not fail in a way this estate has "
     "already failed -- it is not proof that a dispatch would work"
 )
-
-
-def in_q2_scope(repo) -> bool:
-    """Whether the Q2 capability checks are measured for this repository.
-
-    **`delivery_profile` is an INTERIM PROXY for Q1's declaration, not Q1.**
-    Q1's explicit key is a later increment and scoping on it now would make this
-    one depend on unbuilt work; ADR-0015 itself puts the declaration "alongside
-    `delivery_profile:`, which the kit already reads". The proxy is imperfect in
-    a way worth knowing rather than hiding: measured 2026-08-17, `orchestrator`
-    declares a profile and is not in the dispatch allowlist, while
-    `project-standards` was allowlisted and declares none. Measuring
-    `orchestrator` is harmless and informative; that disagreement is Q1's to
-    resolve.
-
-    Scoping is the point rather than an optimisation. Running Q2 against a
-    repository that does not want to be a target produces failures that are
-    decisions -- the exact noise ADR-0015 identified.
-    """
-    m = read_manifest(repo)
-    if m is None or "_yaml_error" in m.frontmatter:
-        return False
-    profile = m.frontmatter.get("delivery_profile")
-    return isinstance(profile, str) and bool(profile.strip())
-
-
-def _out_of_scope(check_id: str) -> dict:
-    return _result(
-        check_id,
-        NA,
-        details=[{"id": f"{check_id}.out-of-scope", "message": _NOT_IN_SCOPE}],
-        fix=(
-            "declare `delivery_profile: <name>` in PROJECT.md frontmatter if this "
-            "repository is meant to be a factory target"
-        ),
-    )
 
 
 def _credential_absent(check_id: str, env_name: str, purpose: str) -> dict:
@@ -232,11 +192,9 @@ def _token_gh_read(token: str):
 
 
 def check_pat_access(
-    repo,
     slug: str,
     token: str | None = None,
     gh_read=None,
-    measure_unscoped: bool = False,
 ) -> dict:
     """Can `FACTORY_PR_TOKEN` reach this repository, with WRITE access?
 
@@ -255,8 +213,6 @@ def check_pat_access(
     operator's environment was wrong.
     """
     check_id = "factory.pat_access"
-    if not (measure_unscoped or in_q2_scope(repo)):
-        return _out_of_scope(check_id)
     token = token if token is not None else config.factory_pat()
     if not token:
         return _credential_absent(
@@ -363,7 +319,7 @@ def check_pat_access(
     )
 
 
-def check_pat_scope(repo, token: str | None = None, measure_unscoped: bool = False) -> dict:
+def check_pat_scope(token: str | None = None) -> dict:
     """May `FACTORY_PR_TOKEN` push a commit touching `.github/workflows/**`?
 
     **This check is ALWAYS `unknown`, and saying so is the point.** There is no
@@ -384,8 +340,6 @@ def check_pat_scope(repo, token: str | None = None, measure_unscoped: bool = Fal
     the second is a statement about GitHub.
     """
     check_id = "factory.pat_scope"
-    if not (measure_unscoped or in_q2_scope(repo)):
-        return _out_of_scope(check_id)
     token = token if token is not None else config.factory_pat()
     if not token:
         return _credential_absent(
@@ -414,7 +368,7 @@ def check_pat_scope(repo, token: str | None = None, measure_unscoped: bool = Fal
     )
 
 
-def check_secrets(repo, slug: str, gh=_gh, measure_unscoped: bool = False) -> dict:
+def check_secrets(slug: str, gh=_gh) -> dict:
     """The Actions secrets the reusable workflow requires, present BY NAME.
 
     The required set is read from factory-runner's workflow AT ITS DECLARED PIN,
@@ -431,8 +385,6 @@ def check_secrets(repo, slug: str, gh=_gh, measure_unscoped: bool = False) -> di
     repository, and nothing here can see a secret's value.
     """
     check_id = "factory.secrets"
-    if not (measure_unscoped or in_q2_scope(repo)):
-        return _out_of_scope(check_id)
     pin = declared_pin(gh=gh)
     if pin is None:
         return _result(
@@ -537,7 +489,7 @@ def _landing_fetch(slug: str, base_url: str, key: str):
     )
 
 
-def check_landing_known(repo, slug: str, fetch=None, measure_unscoped: bool = False) -> dict:
+def check_landing_known(slug: str, fetch=None) -> dict:
     """Has the estate DETERMINED what landing on this repository's default branch does?
 
     App Brain is the authority and is asked, never re-derived: the answer needs
@@ -554,8 +506,6 @@ def check_landing_known(repo, slug: str, fetch=None, measure_unscoped: bool = Fa
     repository; the other needs someone to set an environment variable.
     """
     check_id = "factory.landing_known"
-    if not (measure_unscoped or in_q2_scope(repo)):
-        return _out_of_scope(check_id)
     key = config.app_brain_read_key()
     if not key:
         return _credential_absent(
@@ -704,7 +654,7 @@ def _app_reach_finding(reach: AppReach, slug: str) -> str | tuple[str, dict, str
     )
 
 
-def check_app_access(repo, slug: str, reach=None, measure_unscoped: bool = False) -> dict:
+def check_app_access(slug: str, reach=None) -> dict:
     """Can the Dispatch App reach this repository, with the permissions the work needs?
 
     **Doing factory work takes TWO credentials and only one of them was ever
@@ -744,8 +694,6 @@ def check_app_access(repo, slug: str, reach=None, measure_unscoped: bool = False
     installation at all.
     """
     check_id = "factory.app_access"
-    if not (measure_unscoped or in_q2_scope(repo)):
-        return _out_of_scope(check_id)
     answer = (reach or memoizing_reach())()
     if not isinstance(answer, AppReach):
         # Every way the reach could not be established, each carrying its own
@@ -853,9 +801,7 @@ def check_app_access(repo, slug: str, reach=None, measure_unscoped: bool = False
     )
 
 
-def run_factory_checks(
-    repo, slug: str, gh=_gh, reach=None, measure_unscoped: bool = False
-) -> list[dict]:
+def run_factory_checks(slug: str | None, gh=_gh, reach=None) -> list[dict]:
     """The five Q2 capability checks in this module, in `FACTORY_CHECKS` order.
 
     `runner.caller` is a Q2 check too and is NOT here: it predates this module
@@ -866,16 +812,35 @@ def run_factory_checks(
     SWEEP reads the App installation once for every repository instead of once
     each; a single-repository caller can leave it alone.
 
-    `measure_unscoped` measures a repository that declares no `delivery_profile`:
-    for a caller that NAMED the repository, which the sweep's scope rule exists
-    to infer. The sweep never passes it.
+    Every check measures the repository it is given. Which repositories are
+    measured is the caller's question: `sweep` answers it from the member
+    record, and `portfolio onboard` measures the repository it was named.
+
+    With no slug (a working copy with no GitHub origin) there is no repository
+    to ask GitHub, App Brain or the App about, so each check is `unknown` and
+    says so rather than probing a bare directory name.
     """
+    if slug is None:
+        return [
+            _result(
+                check_id,
+                UNKNOWN,
+                details=[
+                    {
+                        "id": f"{check_id}.no-origin",
+                        "message": "cannot derive a GitHub slug from the origin remote",
+                    }
+                ],
+                fix="add a GitHub origin remote to this repository",
+            )
+            for check_id in FACTORY_CHECKS
+        ]
     return [
-        check_pat_access(repo, slug, measure_unscoped=measure_unscoped),
-        check_pat_scope(repo, measure_unscoped=measure_unscoped),
-        check_secrets(repo, slug, gh=gh, measure_unscoped=measure_unscoped),
-        check_landing_known(repo, slug, measure_unscoped=measure_unscoped),
-        check_app_access(repo, slug, reach=reach, measure_unscoped=measure_unscoped),
+        check_pat_access(slug),
+        check_pat_scope(),
+        check_secrets(slug, gh=gh),
+        check_landing_known(slug),
+        check_app_access(slug, reach=reach),
     ]
 
 
@@ -932,8 +897,10 @@ def memoizing_gh_read(gh_read=_gh_read):
     return cached
 
 
-def sweep(repos, gh=None, reach=None, gh_read=None) -> dict[str, list[dict]]:
-    """Q2 for every repository IN SCOPE, keyed by path string.
+def sweep(
+    repos, granted: frozenset[str], gh=None, reach=None, gh_read=None
+) -> dict[str, list[dict]]:
+    """Q2 for every repository the member record grants app changes, keyed by path string.
 
     **Q2's answer changes without anyone touching the repository** -- a PAT
     rotation, an expired Actions secret, an App Brain record edited, or
@@ -942,9 +909,13 @@ def sweep(repos, gh=None, reach=None, gh_read=None) -> dict[str, list[dict]]:
     lapsed. This is the nightly half of the answer; `portfolio onboard` is the
     on-demand half.
 
-    Out-of-scope repositories are absent from the result rather than carrying
-    four `not-applicable` rows, so the sweep's cost stays proportional to the
-    repositories that declare a delivery profile (six today, not sixty-one).
+    `granted` is the lowercased `owner/repo` slugs `member_scope.read_granted`
+    answers. A working copy is measured when its origin names one of them, so
+    nothing it declares about itself can put it in the sweep. A member with no
+    working copy here, or one whose origin is not GitHub, has no row; the work
+    carrier reads a missing row as `unknown`, never as capable. The rest are
+    absent from the result rather than carrying `not-applicable` rows, so the
+    sweep's cost stays proportional to the members (eight, not sixty-one).
     """
     gh = gh or memoizing_gh()
     gh_read = memoizing_gh_read(gh_read) if gh_read else memoizing_gh_read()
@@ -960,27 +931,11 @@ def sweep(repos, gh=None, reach=None, gh_read=None) -> dict[str, list[dict]]:
     reach = memoizing_reach(reach) if reach is not None else memoizing_reach()
     results: dict[str, list[dict]] = {}
     for repo in repos:
-        if not in_q2_scope(repo):
-            continue
         slug = repo_slug(repo)
-        if slug is None:
-            results[str(repo)] = [
-                _result(
-                    check_id,
-                    UNKNOWN,
-                    details=[
-                        {
-                            "id": f"{check_id}.no-origin",
-                            "message": "cannot derive a GitHub slug from the origin remote",
-                        }
-                    ],
-                    fix=f"add a GitHub origin remote to {repo}",
-                )
-                for check_id in ("runner.caller", *FACTORY_CHECKS)
-            ]
+        if slug is None or slug.lower() not in granted:
             continue
         results[str(repo)] = [
             check_runner_caller(repo, slug, gh=gh, gh_read=gh_read),
-            *run_factory_checks(repo, slug, gh=gh, reach=reach),
+            *run_factory_checks(slug, gh=gh, reach=reach),
         ]
     return results

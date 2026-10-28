@@ -648,12 +648,9 @@ def check_runner_caller(repo: Path, slug: str, gh=_gh, gh_read=_gh_read) -> dict
     same conclusion about the same file a day earlier, for the same reason; the
     kit was simply not brought along.
 
-    Read that as a claim about the VERDICT and not about the row's existence.
-    `sweep` still decides WHICH repositories to measure from `in_q2_scope`,
-    which reads `delivery_profile` out of the local `PROJECT.md` -- so a
-    checkout stale enough to be missing the commit that declared a profile drops
-    out of the sweep entirely, silently, and this check never runs for it at
-    all. Same fault, one layer out, and not fixed here.
+    The row's existence no longer depends on the working copy either: `sweep`
+    decides WHICH repositories to measure from the SDS member record
+    (`member_scope`), not from a `PROJECT.md` a stale checkout might be missing.
 
     **This is the one place Q2 reads Q1.** A caller workflow is the only thing
     that makes a repository dispatchable, so applied uniformly the check

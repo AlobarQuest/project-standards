@@ -1,0 +1,804 @@
+{
+  "members": [
+    {
+      "repository": "AlobarQuest/brain",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": "brain",
+      "machine_local": false,
+      "apps": [
+        {
+          "name": "app-brain",
+          "health_url": "https://app-brain.devonwatkins.com/api/health",
+          "branch": "main"
+        },
+        {
+          "name": "code-brain",
+          "health_url": "https://code-brain.devonwatkins.com/api/health",
+          "branch": "main"
+        },
+        {
+          "name": "infra-brain",
+          "health_url": "https://infra-brain.devonwatkins.com/api/health",
+          "branch": "main"
+        },
+        {
+          "name": "open-brain",
+          "health_url": "https://open-brain.devonwatkins.com/api/health",
+          "branch": "main"
+        }
+      ],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.638654Z",
+          "reason": "in deploy_watcher.workflows.ROLLOUT_WORKFLOWS (estate lander lands Dependabot updates under approved change records)"
+        },
+        "security_patches": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.638654Z",
+          "reason": "not assessed at creation"
+        },
+        "app_changes": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.638654Z",
+          "reason": "factory-target.toml declares factory_target = true"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.638654Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.638654Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.638654Z",
+          "reason": "in deploy_watcher.workflows.ROLLOUT_WORKFLOWS (the deploy watcher watches each landing to an outcome)"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.638654Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/change-manager",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": "change-manager",
+      "machine_local": false,
+      "apps": [
+        {
+          "name": "change-manager",
+          "health_url": "https://change-mgr.alobar.net/api/health",
+          "branch": "main"
+        }
+      ],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.662648Z",
+          "reason": "in deploy_watcher.workflows.ROLLOUT_WORKFLOWS (estate lander lands Dependabot updates under approved change records)"
+        },
+        "security_patches": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.662648Z",
+          "reason": "not assessed at creation"
+        },
+        "app_changes": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.662648Z",
+          "reason": "factory-target.toml declares factory_target = true"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.662648Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.662648Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.662648Z",
+          "reason": "in deploy_watcher.workflows.ROLLOUT_WORKFLOWS (the deploy watcher watches each landing to an outcome)"
+        },
+        "credential_rotation": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.662648Z",
+          "reason": "owns rotated_by_sds credentials in its .cred-consumers.toml (REGISTRY_REPOSITORIES)"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/claude-octopus",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": null,
+      "machine_local": false,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.707973Z",
+          "reason": "in the inert landing population (landing policy 12); a fork: fork-sync brings upstream releases"
+        },
+        "security_patches": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.707973Z",
+          "reason": "a fork: fork-sync brings upstream releases"
+        },
+        "app_changes": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.707973Z",
+          "reason": "not assessed at creation"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.707973Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.707973Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.707973Z",
+          "reason": "in tool_installer.tools.TOOLS"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.707973Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/factory-runner",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": null,
+      "machine_local": false,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.693359Z",
+          "reason": "in the inert landing population (landing policy 12)"
+        },
+        "security_patches": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.693359Z",
+          "reason": "not assessed at creation"
+        },
+        "app_changes": {
+          "state": "remediating",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.693359Z",
+          "reason": "Devon decided 2026-10-26 (membership design); onboarding pending"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.693359Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.693359Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.693359Z",
+          "reason": "not assessed at creation"
+        },
+        "credential_rotation": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.693359Z",
+          "reason": "owns rotated_by_sds credentials in its .cred-consumers.toml (REGISTRY_REPOSITORIES)"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/infraops-mcp-server",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": "infraops-mcp-server",
+      "machine_local": true,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.678559Z",
+          "reason": "in the inert landing population (landing policy 12)"
+        },
+        "security_patches": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.678559Z",
+          "reason": "not assessed at creation"
+        },
+        "app_changes": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.678559Z",
+          "reason": "factory-target.toml declares factory_target = true"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.678559Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.678559Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.678559Z",
+          "reason": "machine-local activation in the activation sweep's BINDABLE set"
+        },
+        "credential_rotation": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.678559Z",
+          "reason": "owns rotated_by_sds credentials in its .cred-consumers.toml (REGISTRY_REPOSITORIES)"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/intent-packages",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": "intent-packages",
+      "machine_local": true,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.683605Z",
+          "reason": "in the inert landing population (landing policy 12)"
+        },
+        "security_patches": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.683605Z",
+          "reason": "not assessed at creation"
+        },
+        "app_changes": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.683605Z",
+          "reason": "factory-target.toml declares factory_target = true"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.683605Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.683605Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.683605Z",
+          "reason": "machine-local activation in the activation sweep's BINDABLE set"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.683605Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/n8n-as-code",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": null,
+      "machine_local": false,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.717644Z",
+          "reason": "in the inert landing population (landing policy 12); a fork: fork-sync brings upstream releases"
+        },
+        "security_patches": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.717644Z",
+          "reason": "a fork: fork-sync brings upstream releases"
+        },
+        "app_changes": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.717644Z",
+          "reason": "not assessed at creation"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.717644Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.717644Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.717644Z",
+          "reason": "in tool_installer.tools.TOOLS"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.717644Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/n8n-manager",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": null,
+      "machine_local": false,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.722420Z",
+          "reason": "in the inert landing population (landing policy 12); a fork: fork-sync brings upstream releases"
+        },
+        "security_patches": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.722420Z",
+          "reason": "a fork: fork-sync brings upstream releases"
+        },
+        "app_changes": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.722420Z",
+          "reason": "not assessed at creation"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.722420Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.722420Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.722420Z",
+          "reason": "not assessed at creation"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.722420Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/orchestrator",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": "orchestrator",
+      "machine_local": true,
+      "apps": [
+        {
+          "name": "orchestrator",
+          "health_url": "https://sds.alobar.net/health/live",
+          "branch": "main"
+        }
+      ],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.672821Z",
+          "reason": "in the inert landing population (landing policy 12)"
+        },
+        "security_patches": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.672821Z",
+          "reason": "not assessed at creation"
+        },
+        "app_changes": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.672821Z",
+          "reason": "factory-target.toml declares factory_target = true"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.672821Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.672821Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.672821Z",
+          "reason": "machine-local activation in the activation sweep's BINDABLE set"
+        },
+        "credential_rotation": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.672821Z",
+          "reason": "owns rotated_by_sds credentials in its .cred-consumers.toml (REGISTRY_REPOSITORIES)"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/project-standards",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": null,
+      "machine_local": false,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.698048Z",
+          "reason": "in the inert landing population (landing policy 12)"
+        },
+        "security_patches": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.698048Z",
+          "reason": "not assessed at creation"
+        },
+        "app_changes": {
+          "state": "granted",
+          "seeded": false,
+          "set_by": "devon",
+          "set_at": "2026-10-27T15:22:44.760607Z",
+          "reason": "Devon decided 2026-10-26 (membership design); portfolio sds-ready repository work cleared 2026-10-27; factory-target.toml declares true with the onboarding PR"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.698048Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.698048Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.698048Z",
+          "reason": "not assessed at creation"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.698048Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/rea",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": null,
+      "machine_local": false,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.712906Z",
+          "reason": "in the inert landing population (landing policy 12); a fork: fork-sync brings upstream releases"
+        },
+        "security_patches": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.712906Z",
+          "reason": "a fork: fork-sync brings upstream releases"
+        },
+        "app_changes": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.712906Z",
+          "reason": "not assessed at creation"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.712906Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.712906Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.712906Z",
+          "reason": "in tool_installer.tools.TOOLS"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.712906Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/rtk",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": null,
+      "machine_local": false,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.702777Z",
+          "reason": "in the inert landing population (landing policy 12); a fork: fork-sync brings upstream releases"
+        },
+        "security_patches": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.702777Z",
+          "reason": "a fork: fork-sync brings upstream releases"
+        },
+        "app_changes": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.702777Z",
+          "reason": "not assessed at creation"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.702777Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.702777Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.702777Z",
+          "reason": "in tool_installer.tools.TOOLS"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.702777Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    },
+    {
+      "repository": "AlobarQuest/security-standards",
+      "owner": "devon",
+      "state": "member",
+      "working_copy": "security-standards",
+      "machine_local": true,
+      "apps": [],
+      "grants": {
+        "dependency_updates": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.688316Z",
+          "reason": "in the inert landing population (landing policy 12)"
+        },
+        "security_patches": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.688316Z",
+          "reason": "not assessed at creation"
+        },
+        "app_changes": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.688316Z",
+          "reason": "factory-target.toml declares factory_target = true"
+        },
+        "backups": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.688316Z",
+          "reason": "not assessed at creation"
+        },
+        "monitoring": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.688316Z",
+          "reason": "not assessed at creation"
+        },
+        "rollouts": {
+          "state": "granted",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.688316Z",
+          "reason": "machine-local activation in the activation sweep's BINDABLE set"
+        },
+        "credential_rotation": {
+          "state": "not_assessed",
+          "seeded": true,
+          "set_by": "devon",
+          "set_at": "2026-10-27T13:22:30.688316Z",
+          "reason": "not assessed at creation"
+        }
+      }
+    }
+  ]
+}
