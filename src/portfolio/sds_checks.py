@@ -186,6 +186,10 @@ def _merge_details(repo: dict) -> tuple[list[dict], bool]:
     squash = _typed(repo, "allow_squash_merge", bool)
     message = _typed(repo, "squash_merge_commit_message", str)
     auto = _typed(repo, "allow_auto_merge", bool)
+    if auto is None:
+        # GitHub serves the setting only to an admin of the repository, so absent means this
+        # read could not tell, never that auto-merge is off.
+        raise _Unreadable("allow_auto_merge was not served (it needs admin on the repository)")
     details = []
     if squash is not True:
         details.append(_detail("sds.squash-disallowed", "squash merging is not allowed"))
@@ -197,7 +201,7 @@ def _merge_details(repo: dict) -> tuple[list[dict], bool]:
                 "(the landing trailer depends on it)",
             )
         )
-    return details, auto is not True
+    return details, auto
 
 
 def _protection_details(protection: dict, branch: str) -> list[dict]:
@@ -240,7 +244,7 @@ def check_branch_settings(slug: str, gh_read=_gh_read) -> dict:
         )
 
     try:
-        details, auto_merge_off = _merge_details(repo)
+        details, auto_merge_on = _merge_details(repo)
     except _Unreadable as error:
         return _branch_unknown("sds.settings-unreadable", str(error))
     protection, why = _read_object(f"repos/{slug}/branches/{branch}/protection", gh_read)
@@ -261,8 +265,14 @@ def check_branch_settings(slug: str, gh_read=_gh_read) -> dict:
             "sds.protection-unreadable", f"{branch} protection could not be read: {why}"
         )
 
-    if auto_merge_off:
-        details.append(_detail("sds.auto-merge-off", "auto-merge is not enabled"))
+    if auto_merge_on:
+        details.append(
+            _detail(
+                "sds.auto-merge-on",
+                "auto-merge is enabled: nothing in the SDS arms it (the orchestrator merges "
+                "directly), and the setting lets any writer arm a merge",
+            )
+        )
     if details:
         return _result(
             BRANCH_SETTINGS_CHECK,

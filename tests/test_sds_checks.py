@@ -146,7 +146,7 @@ REPO_OK = {
     "default_branch": "main",
     "allow_squash_merge": True,
     "squash_merge_commit_message": "COMMIT_MESSAGES",
-    "allow_auto_merge": True,
+    "allow_auto_merge": False,
 }
 PROTECTION_OK = {"required_status_checks": {"strict": False, "contexts": ["Quality"]}}
 UNPROTECTED = "gh: Branch not protected (HTTP 404)\n"
@@ -174,14 +174,29 @@ def test_fully_configured_passes():
 
 
 def test_rentvsbuyga_as_surveyed():
-    repo = {**REPO_OK, "allow_auto_merge": False}
+    repo = {**REPO_OK, "allow_auto_merge": True}
     out = check_branch_settings(SLUG, gh_read=_settings(repo, (None, UNPROTECTED)))
     assert out["status"] == VIOLATION
-    assert _ids(out) == ["sds.no-protection", "sds.auto-merge-off"]
+    assert _ids(out) == ["sds.no-protection", "sds.auto-merge-on"]
+
+
+def test_auto_merge_enabled_is_the_violation():
+    repo = {**REPO_OK, "allow_auto_merge": True}
+    out = check_branch_settings(SLUG, gh_read=_settings(repo, PROTECTION_OK))
+    assert out["status"] == VIOLATION
+    assert _ids(out) == ["sds.auto-merge-on"]
+
+
+def test_an_unserved_auto_merge_setting_is_unknown_not_a_pass():
+    """`allow_auto_merge` is served only to admins; absent means the read could not tell."""
+    repo = {key: value for key, value in REPO_OK.items() if key != "allow_auto_merge"}
+    out = check_branch_settings(SLUG, gh_read=_settings(repo, PROTECTION_OK))
+    assert out["status"] == UNKNOWN
+    assert _ids(out) == ["sds.settings-unreadable"]
 
 
 def test_every_unmet_setting_in_listed_order():
-    repo = {"default_branch": "main"}
+    repo = {"default_branch": "main", "allow_auto_merge": True}
     protection = {
         "required_status_checks": {"strict": True, "contexts": [], "checks": []},
         "required_pull_request_reviews": {"required_approving_review_count": 1},
@@ -193,7 +208,7 @@ def test_every_unmet_setting_in_listed_order():
         "sds.no-required-check",
         "sds.strict",
         "sds.review-required",
-        "sds.auto-merge-off",
+        "sds.auto-merge-on",
     ]
 
 

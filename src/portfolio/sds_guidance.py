@@ -438,8 +438,8 @@ GUIDANCE: dict[str, Guidance] = {
     "repo.protection": Guidance(
         owner="onboarding",
         why=(
-            "The landing lane merges through branch protection, and auto-merge with no required "
-            "check merges a pull request instantly."
+            "The landing lane merges through branch protection, and the factory's work reaches "
+            "the default branch only through a required check."
         ),
         done=(
             "The main branch has branch protection. A plan that does not offer protection on a "
@@ -461,7 +461,7 @@ GUIDANCE: dict[str, Guidance] = {
         ),
         done=(
             "Squash merging is allowed, `squash_merge_commit_message` is `COMMIT_MESSAGES`, "
-            "auto-merge is on, and the default branch's protection requires at least one status "
+            "auto-merge is off, and the default branch's protection requires at least one status "
             "check, is not strict, and requires no approving review."
         ),
         how=(
@@ -470,7 +470,8 @@ GUIDANCE: dict[str, Guidance] = {
             "named by its job name and verified against a real open pull request, "
             "`strict: false`, no required review count, squash merging allowed, "
             "`squash_merge_commit_message` set to `COMMIT_MESSAGES`, and `allow_auto_merge: "
-            "true` enabled only after the required checks read back." + _IDEMPOTENT
+            "false`: nothing in the SDS arms auto-merge, and the setting lets any writer arm a "
+            "merge." + _IDEMPOTENT
         ),
     ),
 }
