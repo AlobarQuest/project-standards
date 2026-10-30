@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -76,9 +77,20 @@ def test_entry_missing_a_field_warns(tmp_path, hosts_file):
     assert [f.code for f in findings] == ["retired_host_unmeasured"]
 
 
-def test_missing_list_is_clean(tmp_path, monkeypatch):
+def test_missing_list_warns_instead_of_reporting_clean(tmp_path, monkeypatch):
     monkeypatch.setenv("RETIRED_HOSTS", str(tmp_path / "absent.toml"))
-    assert scan(_tracked_repo(tmp_path, {"README.md": ADDRESS})) == []
+    findings = scan(_tracked_repo(tmp_path, {"README.md": ADDRESS}))
+    assert [f.code for f in findings] == ["retired_host_unmeasured"]
+
+
+def test_single_table_instead_of_list_warns(tmp_path, hosts_file):
+    hosts_file.write_text(f'[host]\naddress = "{ADDRESS}"\n')
+    findings = scan(_tracked_repo(tmp_path, {"README.md": ADDRESS}))
+    assert [f.code for f in findings] == ["retired_host_unmeasured"]
+
+
+def test_shipped_list_does_not_flag_itself():
+    assert scan(Path(__file__).resolve().parents[1]) == []
 
 
 def test_lint_reports_retired_hosts_without_failing(tmp_path, hosts_file):

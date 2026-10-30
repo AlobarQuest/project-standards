@@ -1,3 +1,5 @@
+# retired-hosts: historical
+#
 # Addresses of hosts that no longer run production. `portfolio lint` warns on any
 # tracked file that still names one, so a host move can't strand a runbook.
 #
