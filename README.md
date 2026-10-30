@@ -274,6 +274,7 @@ surfaces when accepted risks have been resolved and the exception can be deleted
 | `CODE_STANDARDS_REPO` | `~/Developer/code-standards` | Path to code-standards repo |
 | `INFRADRIFT_REPORT_DIR` | `~/infra-drift/reports` | Directory containing infra-drift reports (date-named JSON files) |
 | `FOUNDATION_EXCEPTIONS` | `./foundation-exceptions.toml` | Path to exceptions file |
+| `RETIRED_HOSTS` | `./retired-hosts.toml` | Addresses that `portfolio lint` warns on in tracked files. Add an entry when a host is retired. `docs/superpowers`, `docs/decisions`, `docs/reports`, `tests`, and files containing `retired-hosts: historical` are exempt. |
 | `FOUNDATION_TIMEOUT` | `120` | Checker timeout in seconds |
 | `INFRA_MAX_AGE_HOURS` | `36` | Max age of infra-drift report before marked unknown |
 

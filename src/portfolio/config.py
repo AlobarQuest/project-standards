@@ -53,6 +53,13 @@ def exceptions_path() -> Path:
     )
 
 
+def retired_hosts_path() -> Path:
+    override = os.environ.get("RETIRED_HOSTS")
+    return (
+        Path(override) if override else Path(__file__).resolve().parents[2] / "retired-hosts.toml"
+    )
+
+
 def foundation_json_path() -> Path:
     return portfolio_home() / "foundation.json"
 
