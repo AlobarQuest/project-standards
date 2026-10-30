@@ -1,0 +1,25 @@
+# retired-hosts: historical
+#
+# Addresses of hosts that no longer run production. `portfolio lint` warns on any
+# tracked file that still names one, so a host move can't strand a runbook.
+#
+# When a host is retired, add one entry here in the same change as the move.
+#
+# Entry shape (all fields required):
+#   [[host]]
+#   address = "the IP address or hostname, matched as a fixed string"
+#   label = "what it was"
+#   replacement = "where readers go now"
+#   retired = "YYYY-MM-DD"
+
+[[host]]
+address = "178.156.247.239"
+label = "Hetzner VPS public IP"
+replacement = "OVH 40.160.102.182"
+retired = "2026-10-23"
+
+[[host]]
+address = "100.112.188.96"
+label = "Hetzner VPS tailnet IP"
+replacement = "ovh-vps1 100.92.138.19"
+retired = "2026-10-23"

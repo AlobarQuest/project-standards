@@ -5,6 +5,7 @@ from . import config
 from .detect import is_git
 from .factory_target import FactoryTargetError, factory_target_declaration
 from .manifest import parse_backlog, read_manifest
+from .retired_hosts import scan as scan_retired_hosts
 from .schema import Finding, validate_frontmatter
 
 
@@ -37,6 +38,8 @@ def lint(repo: Path, today: date | None = None) -> list[Finding]:
                 "FAIL" if tier == "active" else "WARN", "not_git", f"{repo.name}: not a git repo"
             )
         )
+    else:
+        findings.extend(scan_retired_hosts(repo))
     for item in parse_backlog(m.body):
         if item.malformed:
             findings.append(
