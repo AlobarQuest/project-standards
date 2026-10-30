@@ -1,6 +1,7 @@
+import subprocess
 from datetime import date
 
-from portfolio.add import add_item, infer_repo
+from portfolio.add import add_item, home_repo, infer_repo
 from portfolio.manifest import read_manifest
 
 NOW = "2026-06-25T10:00:00.000000"
@@ -68,3 +69,43 @@ def test_infer_repo_boundaries(tmp_path):
     got, conf = infer_repo(tmp_path / "proj", [tmp_path])
     assert got is not None and got.name == "proj" and conf == 0.9
     assert infer_repo(tmp_path, [tmp_path]) == (None, 0.0)  # cwd == root → no project
+
+
+def test_second_capture_writes_through_when_only_the_manifest_is_dirty(make_repo, portfolio_env):
+    # The first capture leaves PROJECT.md modified; that must not push the next one to the inbox.
+    repo = make_repo("contacts", files={"package.json": '{"version":"1.0.0"}'})
+    first = add_item("one", repo=repo, cwd=repo, today=date(2026, 6, 25), now_iso=NOW)
+    second = add_item("two", repo=repo, cwd=repo, today=date(2026, 6, 25), now_iso=NOW + "1")
+    assert (first.status, second.status) == ("triaged", "triaged")
+    body = read_manifest(repo).body
+    assert "one" in body and "two" in body
+
+
+def test_dirty_manifest_plus_other_change_does_not_write_through(make_repo, portfolio_env):
+    repo = make_repo("contacts", files={"package.json": '{"version":"1.0.0"}'})
+    add_item("one", repo=repo, cwd=repo, today=date(2026, 6, 25), now_iso=NOW)
+    (repo / "dirty.txt").write_text("x")
+    item = add_item("two", repo=repo, cwd=repo, today=date(2026, 6, 25), now_iso=NOW + "1")
+    assert item.status == "untriaged" and "two" not in read_manifest(repo).body
+
+
+def test_home_repo_maps_worktree_paths_to_the_main_checkout(tmp_path):
+    assert home_repo(tmp_path / "orch" / ".worktrees" / "feat-x") == tmp_path / "orch"
+    assert home_repo(tmp_path / "orch" / ".worktrees" / "feat-x" / "src") == tmp_path / "orch"
+    assert home_repo(tmp_path / "orch") == tmp_path / "orch"
+
+
+def test_capture_from_a_worktree_lands_in_the_main_checkout(make_repo, portfolio_env):
+    repo = make_repo("orch", files={"package.json": '{"version":"1.0.0"}'})
+    wt = repo / ".worktrees" / "feat-x"
+    wt.mkdir(parents=True)
+    (repo / ".gitignore").write_text(".worktrees/\n")
+    subprocess.run(["git", "add", ".gitignore"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "ignore"],
+        cwd=repo,
+        check=True,
+    )
+    item = add_item("from wt", repo=wt, cwd=wt, today=date(2026, 6, 25), now_iso=NOW)
+    assert item.inferred_repo == str(repo) and item.status == "triaged"
+    assert "from wt" in read_manifest(repo).body

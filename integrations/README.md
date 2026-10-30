@@ -53,9 +53,25 @@ portfolio-scan.sh          # prints e.g. {"projects": 53, "fails": 9, "warns": 7
 
 ## `portfolio-triage.sh` — clear the inbox
 
-New backlog items are captured **inbox-first** (`~/.portfolio/inbox.jsonl`); items that
-can't auto-place (ambiguous repo, or dirty tree) wait in the inbox. This walks them one at
-a time:
+New backlog items are captured **inbox-first** (`~/.portfolio/inbox.jsonl`) and written
+through to the repo's `PROJECT.md` when the repo is known and has no uncommitted changes
+other than `PROJECT.md` itself. A capture made from `<repo>/.worktrees/<name>` goes to
+`<repo>`. Everything else waits in the inbox.
+
+Start with the overview and the bulk filer (the CLI is
+`~/Projects/project-standards/.venv/bin/portfolio`):
+
+```bash
+portfolio triage                          # grouped by repo, one short line per item
+portfolio triage --show <id>              # one item's full text
+portfolio triage --file-inferred          # preview: file every item whose repo is known
+portfolio triage --file-inferred --yes    # do it
+```
+
+`--file-inferred` skips a repo with other uncommitted changes, or one that no longer
+exists, and says so. It doesn't commit; the filed lines show up as a `PROJECT.md` change in
+each repo. What's left after it (items with no inferred repo) is what this script is for.
+It walks the remaining items one at a time:
 
 ```bash
 portfolio-triage.sh

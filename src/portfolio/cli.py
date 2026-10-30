@@ -1,17 +1,19 @@
 import argparse
 import json
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
 from .add import add_item
 from .exceptions import ExceptionsError
 from .foundation import FoundationError, run_foundation
+from .inbox import read_inbox
 from .init import init_repo
 from .onboard import run as onboard_run
 from .query import query
 from .scan import scan
 from .sds_ready import run as sds_ready_run
-from .triage import assign, untriaged
+from .triage import assign, file_inferred, item_repo, render_inbox, untriaged
 from .validator import lint
 
 
@@ -30,6 +32,12 @@ def main(argv=None) -> int:  # noqa: C901
     p = sub.add_parser("triage")
     p.add_argument("--assign")
     p.add_argument("--repo")
+    p.add_argument("--show", metavar="ID", help="print one item's full text")
+    p.add_argument("--plain", action="store_true", help="one unshortened line per item")
+    p.add_argument(
+        "--file-inferred", action="store_true", help="file items into their inferred repos"
+    )
+    p.add_argument("--yes", action="store_true", help="with --file-inferred: write the changes")
     p = sub.add_parser("scan")
     p.add_argument("--roots", nargs="*")
     p = sub.add_parser("foundation")
@@ -76,8 +84,32 @@ def main(argv=None) -> int:  # noqa: C901
             assign(args.assign, Path(args.repo))
             print(f"assigned {args.assign}")
             return 0
-        for i in untriaged():
-            print(f"{i.id}  conf={i.confidence}  {i.text}")
+        if args.show:
+            item = next((i for i in read_inbox() if i.id == args.show), None)
+            if item is None:
+                print(f"error: no inbox item {args.show}")
+                return 1
+            print(f"{item.id}  {item.priority or '--'}  {item.ts[:10]}  {item.status}")
+            print(f"repo: {item.inferred_repo or '(none inferred)'}\n\n{item.text}")
+            return 0
+        if args.file_inferred:
+            result = file_inferred(apply=args.yes)
+            verb = "filed" if args.yes else "would file"
+            filed = Counter(str(item_repo(i)) for i in result.filed)
+            skipped = Counter((str(item_repo(i)), why) for i, why in result.skipped)
+            for repo, n in sorted(filed.items()):
+                print(f"{verb} {n:>3}  {repo}")
+            for (repo, why), n in sorted(skipped.items()):
+                print(f"skipped {n:>3}  {repo}  ({why})")
+            print(f"{len(result.filed)} {verb}, {len(result.skipped)} skipped.")
+            if not args.yes and result.filed:
+                print("Nothing written. Re-run with --yes to file them.")
+            return 0
+        if args.plain:
+            for i in untriaged():
+                print(f"{i.id}  conf={i.confidence}  {i.text}")
+            return 0
+        print(render_inbox(untriaged()))
         return 0
     if args.cmd == "scan":
         roots = [Path(r) for r in args.roots] if args.roots else None

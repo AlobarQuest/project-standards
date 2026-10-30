@@ -9,6 +9,18 @@ from .init import init_repo
 from .manifest import append_backlog_item
 
 
+def home_repo(path: Path) -> Path:
+    """Map a path inside <repo>/.worktrees/<name> to <repo>.
+
+    A backlog item belongs in the main checkout's PROJECT.md, not on a feature branch, and the
+    worktree is usually deleted long before anyone triages the item.
+    """
+    parts = Path(path).parts
+    if ".worktrees" in parts[1:]:
+        return Path(*parts[: parts.index(".worktrees")])
+    return Path(path)
+
+
 def infer_repo(cwd: Path, roots: list[Path]) -> tuple[Path | None, float]:
     cwd = Path(cwd).resolve()
     for root in roots:
@@ -21,11 +33,20 @@ def infer_repo(cwd: Path, roots: list[Path]) -> tuple[Path | None, float]:
 
 
 def tree_clean(repo: Path) -> bool:
+    """True when nothing but PROJECT.md has uncommitted changes.
+
+    PROJECT.md is excluded because every write-through modifies it: counting it would send
+    every capture after the first one in a session to the inbox.
+    """
     if not is_git(repo):
         return False
     try:
         out = subprocess.run(
-            ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, timeout=5
+            ["git", "status", "--porcelain", "--", ":(exclude)PROJECT.md"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return out.returncode == 0 and out.stdout.strip() == ""
     except subprocess.SubprocessError, OSError:
@@ -35,7 +56,7 @@ def tree_clean(repo: Path) -> bool:
 def _valid_repo(repo) -> Path | None:
     if repo is None:
         return None
-    repo = Path(repo)
+    repo = home_repo(Path(repo))
     return repo if repo.exists() and repo.is_dir() else None
 
 
