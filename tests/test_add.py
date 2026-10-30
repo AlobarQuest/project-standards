@@ -1,7 +1,7 @@
 import subprocess
 from datetime import date
 
-from portfolio.add import add_item, home_repo, infer_repo
+from portfolio.add import add_item, home_repo, infer_repo, write_block
 from portfolio.manifest import read_manifest
 
 NOW = "2026-06-25T10:00:00.000000"
@@ -89,10 +89,14 @@ def test_dirty_manifest_plus_other_change_does_not_write_through(make_repo, port
     assert item.status == "untriaged" and "two" not in read_manifest(repo).body
 
 
-def test_home_repo_maps_worktree_paths_to_the_main_checkout(tmp_path):
-    assert home_repo(tmp_path / "orch" / ".worktrees" / "feat-x") == tmp_path / "orch"
-    assert home_repo(tmp_path / "orch" / ".worktrees" / "feat-x" / "src") == tmp_path / "orch"
-    assert home_repo(tmp_path / "orch") == tmp_path / "orch"
+def test_home_repo_maps_worktree_paths_to_the_main_checkout(make_repo, tmp_path):
+    repo = make_repo("orch").resolve()
+    assert home_repo(repo / ".worktrees" / "feat-x") == repo
+    assert home_repo(repo / ".worktrees" / "feat-x" / "src") == repo
+    assert home_repo(repo) == repo
+    # A home-level worktree layout (~/.worktrees/<repo>/<branch>) has no checkout to map to.
+    loose = tmp_path / "home" / ".worktrees" / "orch" / "feat"
+    assert home_repo(loose) == loose.resolve()
 
 
 def test_capture_from_a_worktree_lands_in_the_main_checkout(make_repo, portfolio_env):
@@ -107,5 +111,23 @@ def test_capture_from_a_worktree_lands_in_the_main_checkout(make_repo, portfolio
         check=True,
     )
     item = add_item("from wt", repo=wt, cwd=wt, today=date(2026, 6, 25), now_iso=NOW)
-    assert item.inferred_repo == str(repo) and item.status == "triaged"
+    assert item.inferred_repo == str(repo.resolve()) and item.status == "triaged"
     assert "from wt" in read_manifest(repo).body
+
+
+def test_untracked_worktrees_dir_does_not_block(make_repo):
+    repo = make_repo("orch")
+    (repo / ".worktrees" / "feat").mkdir(parents=True)
+    (repo / ".worktrees" / "feat" / "f.txt").write_text("x")
+    assert write_block(repo) is None
+
+
+def test_conflicted_manifest_blocks(make_repo):
+    repo = make_repo("orch")
+    (repo / "PROJECT.md").write_text("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> other\n")
+    assert write_block(repo) == "PROJECT.md has a merge conflict"
+
+
+def test_non_git_dir_reports_why(tmp_path):
+    (tmp_path / "notes").mkdir()
+    assert write_block(tmp_path / "notes") == "not a git repo"

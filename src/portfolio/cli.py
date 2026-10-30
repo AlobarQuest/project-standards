@@ -77,6 +77,13 @@ def main(argv=None) -> int:  # noqa: C901
         print(f"captured [{item.status}] {item.id}: {item.text}")
         return 0
     if args.cmd == "triage":
+        modes = [m for m in ("assign", "show", "file_inferred", "plain") if getattr(args, m)]
+        if len(modes) > 1:
+            print("error: use only one of --assign, --show, --file-inferred, --plain")
+            return 2
+        if args.yes and not args.file_inferred:
+            print("error: --yes only applies to --file-inferred")
+            return 2
         if args.assign:
             if not args.repo:
                 print("error: --assign requires --repo")

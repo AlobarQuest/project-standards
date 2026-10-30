@@ -55,7 +55,7 @@ portfolio-scan.sh          # prints e.g. {"projects": 53, "fails": 9, "warns": 7
 
 New backlog items are captured **inbox-first** (`~/.portfolio/inbox.jsonl`) and written
 through to the repo's `PROJECT.md` when the repo is known and has no uncommitted changes
-other than `PROJECT.md` itself. A capture made from `<repo>/.worktrees/<name>` goes to
+other than `PROJECT.md` itself (a conflicted `PROJECT.md` still blocks). A capture made from `<repo>/.worktrees/<name>` goes to
 `<repo>`. Everything else waits in the inbox.
 
 Start with the overview and the bulk filer (the CLI is

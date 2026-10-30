@@ -146,3 +146,8 @@ def test_cli_file_inferred_needs_yes_to_write(make_repo, portfolio_env, capsys):
     assert read_manifest(repo) is None and "--yes" in capsys.readouterr().out
     assert main(["triage", "--file-inferred", "--yes"]) == 0
     assert "do x" in read_manifest(repo).body
+
+
+def test_cli_triage_rejects_conflicting_flags(portfolio_env):
+    assert main(["triage", "--yes"]) == 2
+    assert main(["triage", "--file-inferred", "--assign", "abc", "--repo", "/tmp"]) == 2

@@ -95,3 +95,35 @@ def test_worktree_items_group_and_file_under_the_main_checkout(make_repo, portfo
     result = file_inferred(apply=True, today=date(2026, 10, 30))
     assert [i.text for i in result.filed] == ["from a deleted worktree"]
     assert "from a deleted worktree" in read_manifest(repo).body
+
+
+def test_assign_to_a_worktree_path_writes_the_main_checkout(make_repo, portfolio_env):
+    repo = make_repo("orch", files={"package.json": '{"version":"1.0.0"}'})
+    it = _untriaged("via worktree path")
+    append_inbox(it)
+    assign(it.id, repo / ".worktrees" / "feat", today=date(2026, 10, 30))
+    assert "via worktree path" in read_manifest(repo).body
+
+
+def test_file_inferred_keeps_going_after_a_write_failure(make_repo, portfolio_env, monkeypatch):
+    bad = make_repo("bad", files={"package.json": '{"version":"1.0.0"}'})
+    good = make_repo("good", files={"package.json": '{"version":"1.0.0"}'})
+    append_inbox(_untriaged("fails", repo=bad))
+    append_inbox(_untriaged("works", repo=good, ts="2026-10-30T10:00:00"))
+    real_assign = assign
+
+    def flaky(item_id, repo, today=None):
+        if repo.name == "bad":
+            raise OSError("disk full")
+        real_assign(item_id, repo, today=today)
+
+    monkeypatch.setattr("portfolio.triage.assign", flaky)
+    result = file_inferred(apply=True, today=date(2026, 10, 30))
+    assert [i.text for i in result.filed] == ["works"]
+    assert [(i.text, why) for i, why in result.skipped] == [("fails", "write failed: disk full")]
+
+
+def test_render_uses_full_path_when_repo_names_collide(tmp_path):
+    a, b = tmp_path / "Projects" / "brain", tmp_path / "Developer" / "brain"
+    out = render_inbox([_untriaged("one", repo=a), _untriaged("two", repo=b)])
+    assert f"{a.resolve()} (1)" in out and f"{b.resolve()} (1)" in out
