@@ -110,3 +110,44 @@ def test_cli_foundation_no_foundational_repos_returns_two(portfolio_env, capsys)
     assert main(["foundation", "--roots", str(portfolio_env)]) == 2
     out = capsys.readouterr().out
     assert "error: no foundational repos" in out
+
+
+def test_cli_triage_plain_keeps_one_line_per_item(portfolio_env, capsys):
+    from portfolio.inbox import InboxItem, append_inbox
+
+    append_inbox(
+        InboxItem("abc123", "2026-10-30T09:00:00", "do x", None, 0.0, None, "P2", "untriaged")
+    )
+    assert main(["triage", "--plain"]) == 0
+    assert capsys.readouterr().out == "abc123  conf=0.0  do x\n"
+
+
+def test_cli_triage_show_prints_full_text(portfolio_env, capsys):
+    from portfolio.inbox import InboxItem, append_inbox
+
+    long = "word " * 60
+    append_inbox(
+        InboxItem("abc123", "2026-10-30T09:00:00", long, None, 0.0, None, None, "untriaged")
+    )
+    assert main(["triage", "--show", "abc123"]) == 0
+    assert long.strip() in capsys.readouterr().out
+    assert main(["triage", "--show", "nope"]) == 1
+
+
+def test_cli_file_inferred_needs_yes_to_write(make_repo, portfolio_env, capsys):
+    from portfolio.inbox import InboxItem, append_inbox
+    from portfolio.manifest import read_manifest
+
+    repo = make_repo("alpha", files={"package.json": '{"version":"1.0.0"}'})
+    append_inbox(
+        InboxItem("abc123", "2026-10-30T09:00:00", "do x", str(repo), 0.9, None, None, "untriaged")
+    )
+    assert main(["triage", "--file-inferred"]) == 0
+    assert read_manifest(repo) is None and "--yes" in capsys.readouterr().out
+    assert main(["triage", "--file-inferred", "--yes"]) == 0
+    assert "do x" in read_manifest(repo).body
+
+
+def test_cli_triage_rejects_conflicting_flags(portfolio_env):
+    assert main(["triage", "--yes"]) == 2
+    assert main(["triage", "--file-inferred", "--assign", "abc", "--repo", "/tmp"]) == 2

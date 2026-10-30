@@ -153,7 +153,9 @@ human tasks are small:
 open ~/.portfolio/PORTFOLIO.md          # per-project table + unified backlog
 
 # place any stray captures the system couldn't auto-route
-~/Projects/project-standards/integrations/portfolio-triage.sh
+~/Projects/project-standards/.venv/bin/portfolio triage                         # overview
+~/Projects/project-standards/.venv/bin/portfolio triage --file-inferred --yes   # file known-repo items
+~/Projects/project-standards/integrations/portfolio-triage.sh                   # place the rest
 
 # onboard a new repo when the scan flags one as missing_manifest
 ~/Projects/project-standards/integrations/portfolio-init.sh /path/to/repo --purpose "does X"

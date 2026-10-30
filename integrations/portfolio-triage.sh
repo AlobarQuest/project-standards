@@ -24,7 +24,7 @@ resolve_repo() {
 
 # Collect untriaged items (portable: no mapfile — macOS /bin/bash is 3.2).
 items=()
-while IFS= read -r l; do [ -n "${l// /}" ] && items+=("$l"); done < <(pf triage)
+while IFS= read -r l; do [ -n "${l// /}" ] && items+=("$l"); done < <(pf triage --plain)
 
 if [ "${#items[@]}" -eq 0 ]; then
   echo "Inbox is empty — nothing to triage. ✅"
