@@ -7,8 +7,9 @@ Outcome: done
 - **Content commits:**
   - `1657eb45610ed915bec7064219f6b1065336c091`: the feed, its wiring, the tests, and the conftest floor.
   - `45dc46e`: a test that pins the conftest floor.
-  - `3f56ecfcf582ab552adb1128819151df22333a20`: mode `0644` and fsync, from the code review. This is the last content commit.
-- **Head:** the commit that adds this report, directly on top of `3f56ecfc`.
+  - `3f56ecfcf582ab552adb1128819151df22333a20`: mode `0644` and fsync, from the code review.
+  - `980bce2e0bbecdca4ccc4cac564825fe64765275`: the members test spells out the four ids. This is the last content commit.
+- **Head:** the commit that updates this report, directly on top of `980bce2e`.
 
 ## What I built
 
@@ -41,7 +42,7 @@ A key gets no row in the following two cases. The real sweep can't produce eithe
 
 ### Two working copies with one origin
 
-The repository gets one row. A check keeps its status only when every copy agrees on it. A check the copies disagree on is left out of `checks`, and the reader treats it as UNKNOWN, so a disagreement fails closed. Only `runner.caller` could differ between copies, and since 2026-09-12 it reads the remote too. In practice the copies agree.
+The repository gets one row. A check keeps its status only when every copy agrees on it. A check the copies disagree on is left out of `checks`, and the reader treats it as UNKNOWN, so a disagreement fails closed. Only `runner.caller` could differ between copies, and since 2026-09-12 it reads the remote too. The copies can still differ when one transient read fails, because the sweep's memoizers don't cache failures.
 
 ### Atomic write
 
@@ -90,7 +91,7 @@ When the member record is unreadable, the feed has `"repositories": []` and `"me
 
 ## Tests and checks
 
-- **`make check`:** `collected 798 items`, `798 passed`. Ruff reports "All checks passed", and Pyright reports 0 errors and 0 warnings. These are the 785 tests from before the branch plus the 13 new ones.
+- **`make check`:** `collected 798 items`, `798 passed`. Ruff reports "All checks passed", and Pyright reports 0 errors and 0 warnings. The branch adds 13 tests, all in `tests/test_feed.py`. Measured at `980bce2e`.
 - **Security scan** (`security_scan.cli . --category security`, from the worktree root): 0 BLOCK, 2 WARN, and 1 INFO.
   - The 2 WARN findings are `bws.manifest-matches-usage`, for two UUIDs in `src/portfolio/sds_guidance.py`. That file is identical on `origin/main` and untouched by this diff.
   - The INFO finding is the judgment-only `bws.least-privilege-scope`.
@@ -106,7 +107,7 @@ When the member record is unreadable, the feed has `"repositories": []` and `"me
 
 ### Mutants
 
-I committed the content first. I applied each mutant alone, ran `tests/test_feed.py`, and restored with `git checkout -- <file>`. Every mutant went red.
+I ran all 18 mutants at the final content commit `980bce2e`. I applied each one alone to committed content, ran `tests/test_feed.py`, and restored with `git checkout -- <file>`. Every mutant went red, and `git status` was clean afterwards.
 
 | # | Mutant | Red test or tests |
 |---|---|---|
@@ -126,6 +127,8 @@ I committed the content first. I applied each mutant alone, ran `tests/test_feed
 | M14 | Conftest floor removed | `test_no_test_sees_the_real_portfolio_home` |
 | M15 | Clock ignored (`datetime.now(UTC)` in place of `clock()`) | `test_scanned_at_is_..._utc_whole_seconds` |
 | M16 | `chmod` to `0644` removed | `test_the_same_inputs_write_the_same_bytes` (mode assertion) |
+| M17 | A fifth id (`factory.pat_scope`) added to `FEED_CHECKS` | `..._four_ids` |
+| M18 | One id (`factory.pat_access`) removed from `FEED_CHECKS` | `..._four_ids` |
 
 ## Files changed
 
@@ -141,12 +144,14 @@ I committed the content first. I applied each mutant alone, ran `tests/test_feed
 - The feed is a separate, pure builder plus a writer. `scan()` gained one parameter and three lines, and `portfolio.json` and the digest are untouched.
 - No owner name appears in code, and the tests use placeholder owners.
 - The feed holds statuses only. A test plants a marker in `details`, `fix`, and `remediation`, and asserts that the marker is absent from the feed's bytes.
-- **TDD order:** I drafted `feed.py` before its tests, not test-first. To compensate, I proved every rule red with the 16 mutants in the preceding table.
+- **TDD order:** I drafted `feed.py` before its tests, not test-first. To compensate, I proved every rule red with the 18 mutants in the preceding table.
 
 ## Concerns
 
 - **The feed's time and `portfolio.json` can disagree after a failure.** If the feed write fails, `portfolio.json` and the digest are already new while the feed still holds the previous scan. That order is the one the handoff specifies. The previous feed has its own older `scanned_at`, so the reader ages it correctly, and the run pings `/fail`.
 - **The second slug read is a little racy.** The feed reads `git remote get-url origin` a second time per measured repository. If an origin changes between the sweep and the feed, which takes milliseconds, the feed keys the row by the new origin, and only if that origin is still a member. This costs one extra `git` subprocess per member, about eight per night.
+
+- **A sweep key can be left out without a trace.** When the second `repo_slug` read returns `None`, or returns a slug that names no member, the feed leaves that key out and logs nothing. The handoff doesn't cover this case. The real sweep can't produce it except in the race in the preceding item. The reader holds a record with no row, so this fails closed.
 
 ## For the next steps
 
@@ -161,7 +166,7 @@ The following is the contract the nightly (security-standards) and the carrier's
   - The nightly needs this to choose `result` and the field that marks "measured nothing", which Amendment 11 decision item 2 leaves to the code step.
 - **`repositories`:** a list sorted by `repository`. Each item has exactly two keys:
   - `repository`: a full lowercased `owner/repo`. At most one row exists per repository.
-  - `checks`: an object whose keys are a subset of `runner.caller`, `factory.secrets`, `factory.landing_known`, and `factory.pat_access`. Each value is a status string the sweep recorded: `pass`, `violation`, `accepted-exception`, `not-applicable`, or `unknown`. A missing key means the check wasn't recorded, or two working copies disagreed, and the reader must treat it as UNKNOWN.
+  - `checks`: an object whose keys are a subset of `runner.caller`, `factory.secrets`, `factory.landing_known`, and `factory.pat_access`. Each value is the status string the sweep recorded, one of the values in `portfolio.matrix`. `factory_checks.py` uses neither `accepted-exception` nor `not-applicable`. `onboard_checks.py`, which holds `runner.caller`, uses `not-applicable` and not `accepted-exception`. Don't assume the set of values stays closed. A missing key means the check wasn't recorded, or two working copies disagreed, and the reader must treat it as UNKNOWN.
   - A member with no working copy on the Mac has no row.
 - **No secrets:** the feed holds no `details`, `fix`, `remediation`, or credential.
 - **Freshness:** the scan writes the feed on every successful run, including runs with an unreadable member record, which exit 3. A run that raises leaves the previous feed in place, with its older `scanned_at`.
