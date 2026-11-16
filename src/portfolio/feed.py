@@ -20,6 +20,7 @@ from pathlib import Path
 from .onboard_checks import repo_slug
 
 FEED_SCHEMA = "portfolio-feed.v1"
+FEED_MODE = 0o644
 
 # The work carrier's `CAPABILITY_CHECKS` and `PERMISSION_CHECKS`
 # (orchestrator `src/work_carrier/workability.py`), the only results it reads.
@@ -99,6 +100,11 @@ def write_feed(path: Path, text: str) -> None:
     try:
         with os.fdopen(fd, "w") as handle:
             handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        # mkstemp creates 0600; the feed holds no secret and is read as
+        # `portfolio.json` is, so it gets that file's ordinary mode.
+        os.chmod(tmp, FEED_MODE)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)

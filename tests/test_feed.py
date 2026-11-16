@@ -201,6 +201,7 @@ def test_the_same_inputs_write_the_same_bytes(make_repo, portfolio_env):
         written.append(config.feed_path().read_bytes())
 
     assert written[0] == written[1]
+    assert config.feed_path().stat().st_mode & 0o777 == 0o644
     assert [r["repository"] for r in _feed()["repositories"]] == [
         "owner-one/alpha",
         "owner-two/beta",
