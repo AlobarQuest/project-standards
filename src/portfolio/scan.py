@@ -1,16 +1,21 @@
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from . import compliance, config, factory_checks, member_scope
 from .aggregate import build_records, render_digest, to_json
+from .feed import build_feed, write_feed
 from .inbox import read_inbox
 from .manifest import read_manifest
 from .matrix import UNKNOWN, VIOLATION
 
 
-def _attach_factory(records, sweep, granted: frozenset[str]) -> int:
-    """Attach Q2 capability results, returning the count of non-satisfying ones.
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _attach_factory(records, sweep, granted: frozenset[str]) -> tuple[int, dict]:
+    """Attach Q2 capability results; return the count of non-satisfying ones and the sweep result.
 
     `not-applicable` is not counted: an ADR-0015 declaration and an out-of-scope
     repository are answers, not findings. `unknown` IS counted -- a capability
@@ -22,7 +27,7 @@ def _attach_factory(records, sweep, granted: frozenset[str]) -> int:
     for record in records:
         record.factory = by_path.get(record.path, [])
         findings += sum(1 for c in record.factory if c["status"] in (VIOLATION, UNKNOWN))
-    return findings
+    return findings, by_path
 
 
 def scan(
@@ -31,7 +36,11 @@ def scan(
     now: datetime | None = None,
     factory_sweep=factory_checks.sweep,
     read_scope=None,
+    clock=_utc_now,
 ) -> dict:
+    # The feed's time, taken once before anything is measured. `now` stays the
+    # naive local time compliance has always used; the feed needs a UTC instant.
+    scanned_at = clock()
     roots = roots or config.DEFAULT_ROOTS
     today = today or date.today()
     now = now or datetime.now()
@@ -42,7 +51,7 @@ def scan(
         granted, member_record_unreadable = (read_scope or member_scope.read_granted)(), None
     except member_scope.MemberRecordUnreadable as error:
         granted, member_record_unreadable = frozenset(), str(error)
-    factory_findings = _attach_factory(records, factory_sweep, granted)
+    factory_findings, by_path = _attach_factory(records, factory_sweep, granted)
 
     pairs = []
     for record in records:
@@ -60,6 +69,11 @@ def scan(
     config.json_path().write_text(to_json(records, untriaged_count, member_record_unreadable))
     config.digest_path().write_text(
         render_digest(records, untriaged_count, member_record_unreadable)
+    )
+    # Last, so a failed feed write never costs the two outputs the Mac still reads.
+    write_feed(
+        config.feed_path(),
+        build_feed(scanned_at, member_record_unreadable, by_path, granted),
     )
     fails = sum(1 for r in records for f in r.findings if f["severity"] == "FAIL")
     warns = sum(1 for r in records for f in r.findings if f["severity"] == "WARN")
