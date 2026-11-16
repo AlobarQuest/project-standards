@@ -9,6 +9,7 @@ import json
 import re
 import subprocess
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -247,3 +248,8 @@ def test_every_feed_check_is_one_the_sweep_can_emit(tmp_path):
         tmp_path, "owner/repo", gh=lambda _args: None, gh_read=lambda _args: (None, "offline")
     )
     assert unreachable["id"] in feed.FEED_CHECKS
+
+
+def test_no_test_sees_the_real_portfolio_home():
+    """The conftest floor: even without `portfolio_env`, the feed path is a temporary one."""
+    assert config.feed_path().parent != Path.home() / ".portfolio"
