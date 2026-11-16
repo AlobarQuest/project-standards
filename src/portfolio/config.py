@@ -21,6 +21,10 @@ def json_path() -> Path:
     return portfolio_home() / "portfolio.json"
 
 
+def feed_path() -> Path:
+    return portfolio_home() / "portfolio-feed.json"
+
+
 def digest_path() -> Path:
     return portfolio_home() / "PORTFOLIO.md"
 

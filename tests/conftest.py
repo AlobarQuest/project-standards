@@ -97,3 +97,16 @@ def _no_sds_observer_token(monkeypatch):
     from portfolio import config
 
     monkeypatch.delenv(config.SDS_OBSERVER_TOKEN_ENV, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _portfolio_home_is_never_the_real_one(monkeypatch, tmp_path_factory):
+    """No test may write the operator's ~/.portfolio, above all `portfolio-feed.json`.
+
+    The nightly appends that feed to the factory-events chain, which is
+    append-only, so a fixture feed written there could never be taken back.
+    `portfolio_env` points every scan test at its own home; this is the floor
+    under a test that forgets to ask for it. A test that exercises the default
+    path removes the variable itself.
+    """
+    monkeypatch.setenv("PORTFOLIO_HOME", str(tmp_path_factory.mktemp("portfolio_home")))
