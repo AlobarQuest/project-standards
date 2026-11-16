@@ -82,7 +82,8 @@ def test_the_feed_holds_the_measured_members_only_with_full_keys_and_four_ids(
         clock=lambda: SCAN_TIME,
     )
 
-    four = dict.fromkeys(feed.FEED_CHECKS)
+    # Spelled out, not read from `feed.FEED_CHECKS`: the reader's contract is these four.
+    four = ("runner.caller", "factory.secrets", "factory.landing_known", "factory.pat_access")
     assert _feed()["repositories"] == [
         {"repository": "owner-one/alpha", "checks": {k: PASS for k in four}},
         {"repository": "owner-two/beta", "checks": {k: VIOLATION for k in four}},
